@@ -706,7 +706,8 @@ public class Motore {
                 while (it.hasNext()) {
                     String k = it.next();
                     JSONObject f = foto.getJSONObject(k);
-                    fotoMt.put(k, new double[]{f.optDouble("t", 0), f.optDouble("ar", Double.NaN)});
+                    double ar = f.optDouble("ar", Double.NaN);
+                    if (!Double.isNaN(ar)) fotoMt.put(k, new double[]{f.optDouble("t", 0), ar});
                 }
             }
         } catch (Exception ignored) { }
@@ -718,9 +719,10 @@ public class Motore {
             synchronized (lock) {
                 for (Map.Entry<String, JSONObject> e : mt.entrySet()) righe.put(e.getKey(), e.getValue());
                 for (Map.Entry<String, double[]> e : fotoMt.entrySet()) {
+                    if (Double.isNaN(e.getValue()[1])) continue;          // le foto non trovate non si salvano
                     JSONObject f = new JSONObject();
                     f.put("t", e.getValue()[0]);
-                    if (!Double.isNaN(e.getValue()[1])) f.put("ar", e.getValue()[1]);
+                    f.put("ar", e.getValue()[1]);
                     foto.put(e.getKey(), f);
                 }
             }
@@ -1010,7 +1012,9 @@ public class Motore {
                     }
                     for (String sid : mt.keySet()) {
                         double[] fm = fotoMt.get(sid);
-                        if (!conFotoVf.contains(sid) && (fm == null || now() - fm[0] > CACHE_SCHEDE_ORE * 3600)) servono.add(sid);
+                        // foto mai cercata, non trovata l'ultima volta (si riprova ogni 3 minuti) o vecchia di 6 ore
+                        boolean rifare = fm == null || Double.isNaN(fm[1]) || now() - fm[0] > CACHE_SCHEDE_ORE * 3600;
+                        if (!conFotoVf.contains(sid) && rifare) servono.add(sid);
                     }
                 }
                 int trovate = 0;
@@ -1027,9 +1031,47 @@ public class Motore {
                 }
             }
 
+            if (mtLetto) riepilogo();
+
             if (aspetta(POLL_POSIZIONI_S * 1000L)) break;
         }
         thread = null;
+    }
+
+    /** Nel registro: per ogni barca, da dove arrivano nome, misure e foto. */
+    private void riepilogo() {
+        List<String> righe = new ArrayList<>();
+        synchronized (lock) {
+            Set<String> usati = new HashSet<>();
+            Map<Long, String> abb = abbinamenti(usati);
+            for (Map.Entry<Long, JSONObject> e : storico.entrySet()) {
+                long m = e.getKey();
+                JSONObject sc = schede.containsKey(m) ? schede.get(m) : new JSONObject();
+                String sid = abb.get(m);
+                JSONObject r = sid != null ? mt.get(sid) : null;
+                String nome = sc.optString("name", "");
+                if (nome.isEmpty() || nome.equals("null")) nome = e.getValue().optString("name", "?");
+                double[] fm = sid != null ? fotoMt.get(sid) : null;
+                righe.add("VF " + m + " " + nome
+                        + " | misure VF: " + fmt(num(sc.opt("len"))) + "x" + fmt(num(sc.opt("wid")))
+                        + " | foto VF: " + (sc.has("foto") ? "si" : "no")
+                        + " | MT: " + (r == null ? "non abbinata"
+                        : sid + " " + r.optString("name", "?") + " misure " + fmt(num(r.opt("len"))) + "x" + fmt(num(r.opt("wid")))
+                        + " foto " + (fm == null ? "mai cercata" : Double.isNaN(fm[1]) ? "non trovata" : "si"))
+                        + (barche.containsKey(m) ? "" : " | non piu' segnalata da VF"));
+            }
+            for (Map.Entry<String, JSONObject> e : mt.entrySet()) {
+                if (usati.contains(e.getKey())) continue;
+                JSONObject r = e.getValue();
+                double[] fm = fotoMt.get(e.getKey());
+                righe.add("solo MT " + e.getKey() + " " + r.optString("name", "?")
+                        + " | misure " + fmt(num(r.opt("len"))) + "x" + fmt(num(r.opt("wid")))
+                        + " | foto " + (fm == null ? "mai cercata" : Double.isNaN(fm[1]) ? "non trovata" : "si")
+                        + " | vista " + r.optInt("elapsed", -1) + " min fa");
+            }
+        }
+        log("Riepilogo barche (" + righe.size() + "):");
+        for (String r : righe) log("  " + r);
     }
 
     /** Dati di configurazione per la pagina. */
