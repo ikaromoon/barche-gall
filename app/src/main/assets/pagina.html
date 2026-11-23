@@ -37,6 +37,7 @@
   #scala h3 { margin:0 0 calc(6px*var(--s)); font-size:calc(15px*var(--s)); letter-spacing:.02em; color:#0d3b66; }
   #scala .riga { margin:calc(4px*var(--s)) 0 calc(2px*var(--s)); }
   #scala .riga.vecchia { opacity:.55; }
+  #scala .riga.sel { background:rgba(255,212,0,.35); outline:2px solid #ffd400; border-radius:6px; opacity:1; }
   #scala .top { display:flex; justify-content:space-between; align-items:baseline; gap:6px; }
   #scala .nm { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   #scala .nm i { display:inline-block; width:.7em; height:.7em; border-radius:50%; margin-right:.35em; vertical-align:middle; }
@@ -92,7 +93,7 @@
 <div id="labels"></div>
 <div id="stato">caricamento...</div>
 <div id="intera">&#x2B05; Indietro: mappa intera</div>
-<div id="aiuto">&#x25B2;&#x25BC;&#x25C0;&#x25B6; scegli barca &nbsp;&middot;&nbsp; OK foto &nbsp;&middot;&nbsp; &#x25B6;&#x275A;&#x275A; zoom sulla barca &nbsp;&middot;&nbsp; &#x23EA;&#x23E9; zoom &nbsp;&middot;&nbsp; Menu pannello &nbsp;&middot;&nbsp; Indietro esci</div>
+<div id="aiuto">&#x25B2;&#x25BC; barca prec./succ. &nbsp;&middot;&nbsp; &#x25C0;&#x25B6; barca a sx/dx &nbsp;&middot;&nbsp; OK foto &nbsp;&middot;&nbsp; &#x25B6;&#x275A;&#x275A; zoom sulla barca &nbsp;&middot;&nbsp; &#x23EA;&#x23E9; zoom &nbsp;&middot;&nbsp; Menu pannello &nbsp;&middot;&nbsp; Indietro esci</div>
 <div id="scala"></div>
 <div id="arrivi"></div>
 <div id="zoom"><div class="box"><button class="x" title="Chiudi">&#x2715;</button><img alt=""><div class="info"></div></div></div>
@@ -168,6 +169,24 @@ function mostraAiuto(sec) {
   timerAiuto = setTimeout(() => { a.classList.add('nascosto'); setTimeout(render, 700); }, sec * 1000);
 }
 mostraAiuto(25);
+// ordine fisso per Su/Giu: lo stesso del pannello "Barche in scala" (dalla piu' lunga),
+// poi quelle senza misure. Si rigenera solo quando una barca compare o sparisce.
+let ordine = [], firmaOrdine = '';
+function aggiornaOrdine() {
+  const firma = vessels.map(v => v.mmsi).sort().join(',');
+  if (firma === firmaOrdine) return;
+  firmaOrdine = firma;
+  ordine = vessels.slice().sort((a, b) => ((b.len > 0) - (a.len > 0)) || (b.len || 0) - (a.len || 0)
+                                         || String(a.name).localeCompare(String(b.name))).map(v => v.mmsi);
+}
+function scorri(passo) {
+  const vis = new Set(visibili.map(o => o.v.mmsi));
+  const lista = ordine.filter(k => vis.has(k));          // solo quelle sullo schermo
+  if (!lista.length) return;
+  const i = lista.indexOf(sel);
+  sel = i < 0 ? (passo > 0 ? lista[0] : lista[lista.length - 1]) : lista[(i + passo + lista.length) % lista.length];
+  render();
+}
 function barcaSel() { const o = visibili.find(o => o.v.mmsi === sel); return o ? o.v : null; }
 function scegli(dir) {
   if (!visibili.length) return;
@@ -194,7 +213,8 @@ function zoomSu(v) { map.flyTo([v.lat, v.lon], Math.max(17, map.getZoom()), {dur
 function tasto(t) {
   mostraAiuto(8);
   const fotoAperta = zoom.classList.contains('aperto');
-  if (t === 'su' || t === 'giu' || t === 'sx' || t === 'dx') { if (!fotoAperta) scegli(t); return; }
+  if (t === 'su' || t === 'giu') { if (!fotoAperta) scorri(t === 'giu' ? 1 : -1); return; }
+  if (t === 'sx' || t === 'dx') { if (!fotoAperta) scegli(t); return; }
   if (t === 'ok') {
     if (fotoAperta) { chiudiFoto(); return; }
     const v = barcaSel();
@@ -253,6 +273,7 @@ async function refresh() {
   try {
     const d = await (await fetch('/api/vessels')).json();
     vessels = d.vessels;
+    aggiornaOrdine();
     arrivi = d.arrivi || [];
     st.className = d.error ? 'err' : '';
     st.textContent = d.error ? ('Errore: ' + d.error)
@@ -491,7 +512,7 @@ function svgSagoma(nome, w, colore) {
 
 function disegnaScala() {
   const box = document.getElementById('scala');
-  const conL = vessels.filter(v => v.len > 0).sort((a, b) => b.len - a.len || a.age - b.age);
+  const conL = ordine.map(k => vessels.find(v => v.mmsi === k)).filter(v => v && v.len > 0);
   const senza = vessels.filter(v => !(v.len > 0));
   if (!vessels.length || !pannelloVisibile) { box.style.display = 'none'; return; }
   box.style.display = '';
@@ -511,7 +532,7 @@ function disegnaScala() {
   let html = '<h3>Barche in scala</h3>';
   for (const v of conL) {
     const sg = svgSagoma(sagomaPerTipo(v.type, v.len), v.len * ppm, v.color);
-    html += '<div class="riga' + (v.age > SBIADISCI ? ' vecchia' : '') + '"><div class="top"><span class="nm"><i style="background:' +
+    html += '<div class="riga' + (v.age > SBIADISCI ? ' vecchia' : '') + (v.mmsi === sel ? ' sel' : '') + '"><div class="top"><span class="nm"><i style="background:' +
             v.color + '"></i>' + esc(v.name) + '</span><span class="lm">' + fmtM(v.len) + (v.wid ? ' × ' + fmtM(v.wid) : '') +
             ' m</span></div>' + sg.svg + '</div>';
   }
