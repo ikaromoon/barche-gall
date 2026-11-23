@@ -684,6 +684,51 @@ public class Motore {
     private void caricaCache() {
         schede = caricaMappa(new File(cacheDir, "schede_v3.json"));
         storico = caricaMappa(new File(cacheDir, "storico.json"));
+        caricaMt();
+    }
+
+    /** Barche e foto MarineTraffic dell'ultima lettura: cosi' alla riapertura si vedono subito,
+     *  senza aspettare i ~20 secondi della pagina invisibile. */
+    private void caricaMt() {
+        try {
+            JSONObject o = new JSONObject(new String(leggi(new File(cacheDir, "marinetraffic.json")), "UTF-8"));
+            JSONObject righe = o.optJSONObject("righe");
+            if (righe != null) {
+                Iterator<String> it = righe.keys();
+                while (it.hasNext()) {
+                    String k = it.next();
+                    mt.put(k, righe.getJSONObject(k));
+                }
+            }
+            JSONObject foto = o.optJSONObject("foto");
+            if (foto != null) {
+                Iterator<String> it = foto.keys();
+                while (it.hasNext()) {
+                    String k = it.next();
+                    JSONObject f = foto.getJSONObject(k);
+                    fotoMt.put(k, new double[]{f.optDouble("t", 0), f.optDouble("ar", Double.NaN)});
+                }
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private void salvaMt() {
+        try {
+            JSONObject righe = new JSONObject(), foto = new JSONObject();
+            synchronized (lock) {
+                for (Map.Entry<String, JSONObject> e : mt.entrySet()) righe.put(e.getKey(), e.getValue());
+                for (Map.Entry<String, double[]> e : fotoMt.entrySet()) {
+                    JSONObject f = new JSONObject();
+                    f.put("t", e.getValue()[0]);
+                    if (!Double.isNaN(e.getValue()[1])) f.put("ar", e.getValue()[1]);
+                    foto.put(e.getKey(), f);
+                }
+            }
+            JSONObject o = new JSONObject();
+            o.put("righe", righe);
+            o.put("foto", foto);
+            scrivi(new File(cacheDir, "marinetraffic.json"), o.toString().getBytes("UTF-8"));
+        } catch (Exception ignored) { }
     }
 
     private static Map<Long, JSONObject> caricaMappa(File f) {
@@ -930,6 +975,7 @@ public class Motore {
                     }
                     log("MarineTraffic: " + righe.size() + " barche, " + arrivi.size() + " in arrivo");
                     mtLetto = true;
+                    salvaMt();
                 } catch (Exception ex) {
                     log("Errore MarineTraffic: " + ex);
                 }
@@ -975,7 +1021,10 @@ public class Motore {
                     synchronized (lock) { fotoMt.put(sid, new double[]{now(), ar}); }
                     if (aspetta(PAUSA_TRA_RICHIESTE_MS)) break;
                 }
-                if (!servono.isEmpty()) log("MarineTraffic: foto trovate " + trovate + " su " + servono.size());
+                if (!servono.isEmpty()) {
+                    log("MarineTraffic: foto trovate " + trovate + " su " + servono.size());
+                    salvaMt();
+                }
             }
 
             if (aspetta(POLL_POSIZIONI_S * 1000L)) break;
