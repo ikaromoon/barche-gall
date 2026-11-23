@@ -537,14 +537,26 @@ function disegnaScala() {
             v.color + '"></i>' + esc(v.name) + '</span><span class="lm">' + fmtM(v.len) + (v.wid ? ' × ' + fmtM(v.wid) : '') +
             ' m</span></div>' + sg.svg + '</div>';
   }
-  // righello con la stessa scala
-  const passo = [1, 2, 5, 10, 20, 50].find(p => p * ppm >= 28 * s) || 50;
+  // righello con la stessa scala: tacche e numeri proporzionati alla finestra, numeri sotto la linea
+  const fs = 13 * s;                                        // grandezza dei numeri
+  const passo = [1, 2, 5, 10, 20, 50, 100].find(p => p * ppm >= fs * 4.2) || 100;   // abbastanza spazio tra i numeri (anche per "60 m")
   const nTacche = Math.max(1, Math.min(Math.floor(larg / (passo * ppm)), Math.ceil(maxL / passo)));
-  let r = '<svg width="' + larg + '" height="' + (22 * s) + '"><line x1="0" y1="4" x2="' + (nTacche * passo * ppm) + '" y2="4" stroke="#345" stroke-width="1.5"/>';
+  const yL = 2 * s, hT = 7 * s, yN = yL + hT + fs * 1.05;   // linea, altezza tacche, riga dei numeri
+  const sw = Math.max(1, 1.6 * s);
+  let r = '<svg width="' + larg + '" height="' + (yN + fs * 0.35) + '" style="overflow:visible">' +
+          '<line x1="0" y1="' + yL + '" x2="' + (nTacche * passo * ppm) + '" y2="' + yL + '" stroke="#345" stroke-width="' + sw + '"/>';
+  // tacche piccole senza numero tra quelle grandi (ogni metro, 2 o 5 m a seconda del passo)
+  const fine = [1, 2, 5, 10, 20].filter(f => passo % f === 0 && f < passo).find(f => f * ppm >= 5 * s);
+  if (fine) for (let m = fine; m < nTacche * passo; m += fine) {
+    if (m % passo === 0) continue;
+    const x = m * ppm;
+    r += '<line x1="' + x + '" y1="' + yL + '" x2="' + x + '" y2="' + (yL + hT * 0.5) + '" stroke="#345" stroke-width="' + sw * 0.7 + '"/>';
+  }
   for (let i = 0; i <= nTacche; i++) {
     const x = i * passo * ppm;
-    r += '<line x1="' + x + '" y1="0" x2="' + x + '" y2="8" stroke="#345" stroke-width="1.5"/>' +
-         '<text x="' + x + '" y="' + (19 * s) + '" font-size="' + (10 * s) + '" fill="#345" text-anchor="' + (i ? 'middle' : 'start') + '">' +
+    const ancora = i === 0 ? 'start' : (i === nTacche ? 'end' : 'middle');
+    r += '<line x1="' + x + '" y1="' + yL + '" x2="' + x + '" y2="' + (yL + hT) + '" stroke="#345" stroke-width="' + sw + '"/>' +
+         '<text x="' + x + '" y="' + yN + '" font-size="' + fs + '" font-weight="600" fill="#234" text-anchor="' + ancora + '">' +
          (i * passo) + (i === nTacche ? ' m' : '') + '</text>';
   }
   html += '<div class="righello">' + r + '</svg></div>';
