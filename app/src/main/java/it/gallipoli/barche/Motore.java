@@ -387,7 +387,11 @@ public class Motore {
     }
 
     static int[] tile(double lat, double lon) {
-        int n = 1 << 10;
+        return tile(lat, lon, 10);
+    }
+
+    static int[] tile(double lat, double lon, int zoom) {
+        int n = 1 << zoom;
         int x = (int) ((lon + 180) / 360 * n);
         double r = Math.toRadians(lat);
         double asinh = Math.log(Math.tan(r) + Math.sqrt(Math.tan(r) * Math.tan(r) + 1));
@@ -400,85 +404,150 @@ public class Motore {
         return new JSONObject(new String(d, "UTF-8"));
     }
 
+    /** Un riquadro MarineTraffic: richiesta semplice, oppure dalla pagina invisibile se MT blocca. */
+    private JSONObject leggiRiquadro(String path) throws Exception {
+        try {
+            return "python".equals(modoMt) ? mtPython(path) : new JSONObject(browserMT.fetch(path));
+        } catch (Exception ex) {
+            if ("python".equals(modoMt) && browserMT != null) {
+                log("MarineTraffic blocca le richieste semplici (" + ex + "): uso il browser nascosto");
+                modoMt = "browser";
+                return new JSONObject(browserMT.fetch(path));
+            }
+            throw ex;
+        }
+    }
+
+    /** Mette le barche del riquadro in 'dentro' (nell'area) o in 'fuori' (nei dintorni 'larga'). */
+    private void leggiRighe(JSONObject d, Area larga, Map<String, JSONObject> dentro, Map<String, JSONObject> fuori) throws Exception {
+        JSONObject data = d.optJSONObject("data");
+        JSONArray rows = data != null ? data.optJSONArray("rows") : null;
+        if (rows == null) return;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject r = rows.optJSONObject(i);
+            if (r == null) continue;
+            double lat, lon;
+            try {
+                lat = Double.parseDouble(r.getString("LAT"));
+                lon = Double.parseDouble(r.getString("LON"));
+            } catch (Exception ex) { continue; }
+            JSONObject riga = new JSONObject();
+            riga.put("id", String.valueOf(r.opt("SHIP_ID")));
+            riga.put("lat", lat); riga.put("lon", lon);
+            riga.put("name", r.optString("SHIPNAME", "").equals("null") ? "" : r.optString("SHIPNAME", "").trim());
+            riga.put("elapsed", (int) num0(r.opt("ELAPSED")));
+            putNum(riga, "len", num(r.opt("LENGTH")));
+            putNum(riga, "wid", num(r.opt("WIDTH")));
+            riga.put("speed", num0(r.opt("SPEED")) / 10.0);
+            Object co = r.opt("COURSE");
+            if (co != null && co != JSONObject.NULL && !String.valueOf(co).isEmpty()) {
+                try { riga.put("course", Double.parseDouble(String.valueOf(co))); } catch (Exception ignored) { }
+            }
+            Object st = r.opt("SHIPTYPE");
+            if (st != null && st != JSONObject.NULL) riga.put("shiptype", String.valueOf(st));
+            riga.put("letto", now());
+            String id = riga.getString("id");
+            if (area.sud <= lat && lat <= area.nord && area.ovest <= lon && lon <= area.est) dentro.put(id, riga);
+            else if (fuori != null && larga.sud <= lat && lat <= larga.nord && larga.ovest <= lon && lon <= larga.est) fuori.put(id, riga);
+        }
+    }
+
     /** Legge i riquadri che coprono 'larga'; restituisce le barche dentro l'area, quelle fuori in mtFuori. */
     Map<String, JSONObject> leggiMt(Area larga) throws Exception {
         Map<String, JSONObject> dentro = new HashMap<>(), fuori = new HashMap<>();
         for (String path : mtRiquadri(larga)) {
-            JSONObject d;
-            try {
-                d = "python".equals(modoMt) ? mtPython(path) : new JSONObject(browserMT.fetch(path));
-            } catch (Exception ex) {
-                if ("python".equals(modoMt) && browserMT != null) {
-                    log("MarineTraffic blocca le richieste semplici (" + ex + "): uso il browser nascosto");
-                    modoMt = "browser";
-                    d = new JSONObject(browserMT.fetch(path));
-                } else {
-                    throw ex;
-                }
-            }
-            JSONObject data = d.optJSONObject("data");
-            JSONArray rows = data != null ? data.optJSONArray("rows") : null;
-            if (rows != null) {
-                for (int i = 0; i < rows.length(); i++) {
-                    JSONObject r = rows.optJSONObject(i);
-                    if (r == null) continue;
-                    double lat, lon;
-                    try {
-                        lat = Double.parseDouble(r.getString("LAT"));
-                        lon = Double.parseDouble(r.getString("LON"));
-                    } catch (Exception ex) { continue; }
-                    JSONObject riga = new JSONObject();
-                    riga.put("id", String.valueOf(r.opt("SHIP_ID")));
-                    riga.put("lat", lat); riga.put("lon", lon);
-                    riga.put("name", r.optString("SHIPNAME", "").equals("null") ? "" : r.optString("SHIPNAME", "").trim());
-                    riga.put("elapsed", (int) num0(r.opt("ELAPSED")));
-                    putNum(riga, "len", num(r.opt("LENGTH")));
-                    putNum(riga, "wid", num(r.opt("WIDTH")));
-                    riga.put("speed", num0(r.opt("SPEED")) / 10.0);
-                    Object co = r.opt("COURSE");
-                    if (co != null && co != JSONObject.NULL && !String.valueOf(co).isEmpty()) {
-                        try { riga.put("course", Double.parseDouble(String.valueOf(co))); } catch (Exception ignored) { }
-                    }
-                    Object st = r.opt("SHIPTYPE");
-                    if (st != null && st != JSONObject.NULL) riga.put("shiptype", String.valueOf(st));
-                    riga.put("letto", now());
-                    String id = riga.getString("id");
-                    if (area.sud <= lat && lat <= area.nord && area.ovest <= lon && lon <= area.est) dentro.put(id, riga);
-                    else if (larga.sud <= lat && lat <= larga.nord && larga.ovest <= lon && lon <= larga.est) fuori.put(id, riga);
-                }
-            }
+            leggiRighe(leggiRiquadro(path), larga, dentro, fuori);
             if (aspetta(PAUSA_TRA_RICHIESTE_MS)) break;
         }
         mtFuori = fuori;
+        if (!fermo) leggiMtVicino(dentro);
         return dentro;
+    }
+
+    /** A zoom basso MarineTraffic manda una sola barca quando due sono ormeggiate una accanto all'altra.
+     *  Per le barche di VesselFinder che MarineTraffic non ha mandato si rilegge, a zoom alto,
+     *  solo il piccolo riquadro (circa 2 km) in cui si trovano. */
+    static final int ZOOM_VICINO = 14;          // riquadri standard a zoom 14 = MarineTraffic "z:15"
+    static final int MAX_RIQUADRI_VICINO = 4;
+
+    private void leggiMtVicino(Map<String, JSONObject> dentro) throws Exception {
+        Map<String, List<String>> perNome = new HashMap<>();
+        for (Map.Entry<String, JSONObject> e : dentro.entrySet()) {
+            String k = normNome(e.getValue().optString("name"));
+            if (!perNome.containsKey(k)) perNome.put(k, new ArrayList<String>());
+            perNome.get(k).add(e.getKey());
+        }
+        Set<String> riquadri = new HashSet<>();
+        synchronized (lock) {
+            for (Map.Entry<Long, JSONObject> e : barche.entrySet()) {
+                JSONObject b = e.getValue();
+                JSONObject sc = schede.get(e.getKey());
+                String nomeSc = sc != null ? sc.optString("name", "") : "";
+                if (nomeSc.equals("null")) nomeSc = "";
+                String nome = normNome(nomeSc.isEmpty() ? b.optString("name") : nomeSc);
+                boolean trovata = !nome.isEmpty() && perNome.containsKey(nome);
+                if (!trovata) {
+                    for (JSONObject r : dentro.values())
+                        if (distanzaM(b, r) < 25 && normNome(r.optString("name")).isEmpty()) { trovata = true; break; }
+                }
+                if (!trovata) {
+                    int[] t = tile(b.optDouble("lat"), b.optDouble("lon"), ZOOM_VICINO);
+                    riquadri.add("/getData/get_data_json_4/z:" + (ZOOM_VICINO + 1) + "/X:" + t[0] + "/Y:" + t[1] + "/station:0");
+                }
+            }
+        }
+        int fatti = 0, prima = dentro.size();
+        for (String path : riquadri) {
+            if (fatti++ >= MAX_RIQUADRI_VICINO || fermo) break;
+            try {
+                leggiRighe(leggiRiquadro(path), area, dentro, null);
+            } catch (Exception ex) {
+                log("MarineTraffic zoom alto " + path + ": " + ex.getMessage());
+            }
+            if (aspetta(PAUSA_TRA_RICHIESTE_MS)) break;
+        }
+        if (!riquadri.isEmpty())
+            log("MarineTraffic zoom alto: " + Math.min(riquadri.size(), MAX_RIQUADRI_VICINO) + " riquadri, "
+                    + (dentro.size() - prima) + " barche in piu'");
     }
 
     /** Immagine MarineTraffic: richiesta semplice, oppure dalla pagina invisibile se MT blocca. */
     private byte[] mtImg(String url) {
+        return mtImg(url, null);
+    }
+
+    private byte[] mtImg(String url, StringBuilder motivo) {
         byte[] d = null;
+        String m1 = "non provata", m2 = "non provata";
         if (!"browser".equals(modoMt)) {
             try {
                 d = httpGet(url, MT + "/en/ais/home", "image/avif,image/webp,image/*,*/*;q=0.8", false);
-            } catch (Exception ignored) { }
+            } catch (Exception ex) { m1 = String.valueOf(ex.getMessage()); }
         }
         if (d == null && browserMT != null) {
-            try { d = browserMT.fetchByte(url); } catch (Exception ignored) { }
+            try { d = browserMT.fetchByte(url); } catch (Exception ex) { m2 = String.valueOf(ex.getMessage()); }
         }
-        if (d == null) return null;
-        int[] dim = dimensioniImg(d);
-        return (dim != null && dim[1] > 0 && d.length > 1000) ? d : null;
+        if (d != null) {
+            int[] dim = dimensioniImg(d);
+            if (dim != null && dim[1] > 0 && d.length > 1000) return d;
+            m2 = "non e' un'immagine (" + d.length + " byte)";
+        }
+        if (motivo != null) { motivo.setLength(0); motivo.append("diretta: ").append(m1).append(" | pagina: ").append(m2); }
+        return null;
     }
 
     double scaricaFotoMt(String shipId) {
         String base = MT + "/photoCollection/getAssetDefaultPhoto?asset_id=" + shipId + "&asset_type_id=0&photo_size=";
+        StringBuilder motivo = new StringBuilder();
         for (String size : new String[]{"800", "300"}) {
-            byte[] data = mtImg(base + size);
+            byte[] data = mtImg(base + size, motivo);
             if (data != null) {
                 try { scrivi(new File(fotoDir, "mt" + shipId + ".img"), data); } catch (Exception ignored) { }
                 int[] dim = dimensioniImg(data);
                 return (double) dim[0] / dim[1];
             }
         }
+        log("Foto MarineTraffic " + shipId + " non trovata: " + motivo);
         return Double.NaN;
     }
 
