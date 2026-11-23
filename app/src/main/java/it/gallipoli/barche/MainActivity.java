@@ -35,7 +35,11 @@ public class MainActivity extends Activity {
     static final String HOST = "barche.app";
 
     private WebView web;
-    private Motore motore;
+
+    // Un solo motore per tutta l'app: se la Fire TV ricrea la schermata (Home e poi di nuovo l'icona)
+    // la nuova schermata riusa quello che gia' gira, con barche, misure e foto gia' caricate.
+    private static Motore motore;
+    private static MainActivity attiva;      // schermata attuale: serve per la pagina MarineTraffic invisibile
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     // ------------------------------------------------------------ MarineTraffic col browser nascosto
@@ -129,10 +133,13 @@ public class MainActivity extends Activity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
 
-        motore = new Motore(getCacheDir(), new Motore.BrowserMT() {
-            @Override public String fetch(String path) throws Exception { return fetchMt(path); }
-            @Override public byte[] fetchByte(String url) throws Exception { return fetchMtByte(url); }
-        });
+        attiva = this;
+        if (motore == null) {
+            motore = new Motore(getApplicationContext().getCacheDir(), new Motore.BrowserMT() {
+                @Override public String fetch(String path) throws Exception { return schermata().fetchMt(path); }
+                @Override public byte[] fetchByte(String url) throws Exception { return schermata().fetchMtByte(url); }
+            });
+        }
 
         web = new WebView(this);
         web.setBackgroundColor(Color.rgb(0xaa, 0xd3, 0xdf));
@@ -156,9 +163,22 @@ public class MainActivity extends Activity {
         motore.avvia();
     }
 
+    private static MainActivity schermata() throws Exception {
+        MainActivity a = attiva;
+        if (a == null) throw new Exception("MarineTraffic: nessuna schermata aperta");
+        return a;
+    }
+
     @Override
     protected void onDestroy() {
-        motore.ferma();
+        if (attiva == this) {
+            attiva = null;
+            // si ferma solo se si esce davvero dall'app (tasto Indietro), non se la schermata viene ricreata
+            if (isFinishing() && motore != null) {
+                motore.ferma();
+                motore = null;
+            }
+        }
         if (mtWeb != null) mtWeb.destroy();
         web.destroy();
         super.onDestroy();
