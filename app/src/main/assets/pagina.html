@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="it"><head><meta charset="utf-8"><title>Gallipoli - barche</title>
+<link rel="stylesheet" href="leaflet.css">
+<script src="leaflet.js"></script>
+<style>
+  :root { --s: 1.0; }
+  html, body { margin:0; height:100%; overflow:hidden; background:#aad3df;
+               font-family: "Segoe UI", Roboto, Arial, sans-serif; }
+  #map { position:absolute; inset:0; }
+  #lines { position:absolute; inset:0; width:100%; height:100%; z-index:1000; pointer-events:none; }
+  #frecce { position:absolute; inset:0; width:100%; height:100%; z-index:1004; pointer-events:none; }
+  #labels { position:absolute; inset:0; z-index:1001; pointer-events:none; }
+  .bubble { position:absolute; background:#fff; border-radius:calc(8px*var(--s));
+            border:calc(3px*var(--s)) solid var(--c); overflow:hidden;
+            box-shadow:0 3px 12px rgba(0,0,0,.35); width:calc(190px*var(--s)); }
+  .bubble img { display:block; width:100%; object-fit:cover; background:#e9eef3; }
+  .bubble .tx { padding:calc(5px*var(--s)) calc(8px*var(--s)); }
+  .bubble .nm { font-weight:700; font-size:calc(15px*var(--s)); color:#123; white-space:nowrap;
+                overflow:hidden; text-overflow:ellipsis; }
+  .bubble .sz { font-size:calc(13px*var(--s)); color:#345; }
+  .bubble .sz b { color:#123; }
+  .bubble.vecchia { border-style:dashed; }
+  .bubble.vecchia > * { opacity:.6; }
+  .bubble .eta { font-size:calc(11px*var(--s)); font-weight:600; }
+  .bubble .eta.fresca { color:#1e8e3e; }
+  .bubble .eta.media { color:#c26a00; }
+  .bubble .eta.vecchia { color:#7a8794; }
+  #stato { position:absolute; left:10px; bottom:8px; z-index:1002; background:rgba(255,255,255,.85);
+           padding:4px 10px; border-radius:6px; font-size:13px; color:#234; }
+  #stato.err { color:#b00; }
+  #scala { position:absolute; z-index:1003; left:3.0%; top:30.0%; width:18.0%;
+           max-height:64.0%; overflow:hidden; box-sizing:border-box;
+           background:rgba(255,255,255,.93); border-radius:calc(12px*var(--s));
+           box-shadow:0 4px 18px rgba(0,40,80,.25); padding:calc(10px*var(--s)) calc(12px*var(--s));
+           font-size:calc(13px*var(--s)); color:#123; }
+  #scala.trasparente { opacity:.45; }
+  #scala h3 { margin:0 0 calc(6px*var(--s)); font-size:calc(15px*var(--s)); letter-spacing:.02em; color:#0d3b66; }
+  #scala .riga { margin:calc(4px*var(--s)) 0 calc(2px*var(--s)); }
+  #scala .riga.vecchia { opacity:.55; }
+  #scala .top { display:flex; justify-content:space-between; align-items:baseline; gap:6px; }
+  #scala .nm { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #scala .nm i { display:inline-block; width:.7em; height:.7em; border-radius:50%; margin-right:.35em; vertical-align:middle; }
+  #scala .lm { color:#456; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  #scala svg { display:block; overflow:visible; }
+  #scala .nd { margin-top:calc(6px*var(--s)); color:#678; font-size:calc(11px*var(--s)); }
+  #scala .righello { margin-top:calc(8px*var(--s)); }
+  #arrivi { position:absolute; z-index:1003; left:0; top:0; width:17.0%; box-sizing:border-box;
+            background:rgba(255,255,255,.93); border-radius:calc(12px*var(--s)); display:none;
+            box-shadow:0 4px 18px rgba(0,40,80,.25); padding:calc(10px*var(--s)) calc(12px*var(--s));
+            font-size:calc(13px*var(--s)); color:#123; }
+  #arrivi h3 { margin:0 0 calc(4px*var(--s)); font-size:calc(15px*var(--s)); color:#0d3b66; }
+  #arrivi .a { padding:calc(5px*var(--s)) 0; border-top:1px solid #e3e9ef; }
+  #arrivi .a:first-of-type { border-top:0; }
+  #arrivi .r1 { display:flex; justify-content:space-between; gap:8px; align-items:baseline; }
+  #arrivi .nm { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #arrivi .nm i { display:inline-block; width:.7em; height:.7em; border-radius:50%; margin-right:.35em; vertical-align:middle; }
+  #arrivi .eta { font-weight:700; color:#0d6efd; white-space:nowrap; }
+  #arrivi .r2 { color:#567; font-size:calc(11.5px*var(--s)); }
+  #arrivi .nota { color:#89a; font-size:calc(10px*var(--s)); margin-top:calc(4px*var(--s)); }
+  #zoom { position:fixed; inset:0; z-index:3000; background:rgba(5,20,35,.72); display:none;
+          align-items:center; justify-content:center; }
+  #zoom.aperto { display:flex; }
+  #zoom .box { position:relative; background:#fff; border-radius:12px; padding:12px 12px 10px;
+               box-shadow:0 10px 40px rgba(0,0,0,.5); max-width:80vw; }
+  #zoom img { display:block; width:min(calc(80vw - 24px), calc(72vh * var(--ar, 1.5))); height:auto;
+             aspect-ratio:var(--ar, 1.5); object-fit:contain; border-radius:6px; background:#e9eef3; }
+  #zoom .info { padding:8px 4px 0; font-size:16px; color:#123; display:flex; gap:18px; align-items:baseline; flex-wrap:wrap; }
+  #zoom .info b { font-size:19px; }
+  #zoom .info .eta { font-size:14px; font-weight:600; }
+  #zoom .info .eta.fresca { color:#1e8e3e; } #zoom .info .eta.media { color:#c26a00; } #zoom .info .eta.vecchia { color:#7a8794; }
+  #zoom .x { position:absolute; top:-14px; right:-14px; width:32px; height:32px; border-radius:50%; border:0;
+             background:#c62828; color:#fff; font:bold 16px/32px Arial, sans-serif; cursor:pointer;
+             box-shadow:0 2px 8px rgba(0,0,0,.4); padding:0; }
+  .bubble.compatto { cursor:default; }
+  .bubble.cliccabile { pointer-events:auto; cursor:zoom-in; }
+  #intera { position:absolute; left:10px; top:10px; z-index:2000; height:26px; padding:0 14px;
+            border-radius:13px; background:#0d3b66; color:#fff; font:600 14px/26px "Segoe UI", Roboto, Arial, sans-serif;
+            box-shadow:0 2px 8px rgba(0,0,0,.35); display:none; }
+  #intera.visibile { display:block; }
+  #aiuto { position:absolute; right:10px; top:10px; z-index:2000; background:rgba(13,59,102,.88); color:#fff;
+           padding:4px 10px; border-radius:8px; font:600 10.5px "Segoe UI", Roboto, Arial, sans-serif;
+           transition:opacity .6s, visibility .6s; }
+  #aiuto.nascosto { opacity:0; visibility:hidden; }
+  .bubble.sel { outline:calc(4px*var(--s)) solid #ffd400; outline-offset:calc(2px*var(--s));
+                box-shadow:0 0 0 calc(9px*var(--s)) rgba(255,212,0,.35), 0 6px 22px rgba(0,0,0,.5); z-index:5; }
+  #lines .hit { pointer-events:all; cursor:zoom-in; }
+</style></head>
+<body>
+<div id="map"></div>
+<svg id="lines"></svg>
+<svg id="frecce"></svg>
+<div id="labels"></div>
+<div id="stato">caricamento...</div>
+<div id="intera">&#x2B05; Indietro: mappa intera</div>
+<div id="aiuto">&#x25B2;&#x25BC;&#x25C0;&#x25B6; scegli barca &nbsp;&middot;&nbsp; OK foto &nbsp;&middot;&nbsp; &#x25B6;&#x275A;&#x275A; zoom sulla barca &nbsp;&middot;&nbsp; &#x23EA;&#x23E9; zoom &nbsp;&middot;&nbsp; Menu pannello &nbsp;&middot;&nbsp; Indietro esci</div>
+<div id="scala"></div>
+<div id="arrivi"></div>
+<div id="zoom"><div class="box"><button class="x" title="Chiudi">&#x2715;</button><img alt=""><div class="info"></div></div></div>
+<script>
+const BOUNDS = %%BOUNDS%%;
+const DOT = 7;
+const SBIADISCI = 120;
+const GAP = 10;
+const RADII = [28, 55, 90, 135, 190, 255, 330, 420, 520, 640];
+const ANGLES = [-45,-135,45,135,-90,90,0,180,-22.5,-67.5,-112.5,-157.5,22.5,67.5,112.5,157.5]
+               .map(d => d * Math.PI / 180);
+
+const map = L.map('map', {zoomControl:false, zoomSnap:0, zoomDelta:0.25, attributionControl:false, keyboard:false});
+// mappe di sfondo senza chiave; se la prima da' errori si passa alla successiva
+const SFONDI = [
+  ['https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'&copy; OpenStreetMap'}],
+  ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+   {maxZoom:19, attribution:'&copy; Esri'}],
+  ['https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+   {subdomains:'abcd', maxZoom:20, attribution:'&copy; OpenStreetMap &copy; CARTO'}],
+];
+let sfondo = null, nSfondo = 0, erroriSfondo = 0;
+function usaSfondo(i) {
+  if (sfondo) map.removeLayer(sfondo);
+  erroriSfondo = 0;
+  const [url, opt] = SFONDI[i];
+  sfondo = L.tileLayer(url, Object.assign({}, opt, {attribution: opt.attribution + ' - dati VesselFinder'})).addTo(map);
+  sfondo.on('tileerror', () => {
+    if (++erroriSfondo >= 4 && nSfondo < SFONDI.length - 1) usaSfondo(++nSfondo);
+  });
+}
+usaSfondo(0);
+let vistaIniziale = null;
+function fit() {
+  map.fitBounds(BOUNDS, {padding:[0,0], animate:false});
+  vistaIniziale = {zoom: map.getZoom(), centro: map.getCenter()};
+  aggiornaTastoIntera();
+}
+function inVistaIniziale() {
+  if (!vistaIniziale) return true;
+  const a = map.latLngToContainerPoint(map.getCenter()), b = map.latLngToContainerPoint(vistaIniziale.centro);
+  return Math.abs(map.getZoom() - vistaIniziale.zoom) < 0.02 && Math.hypot(a.x - b.x, a.y - b.y) < 3;
+}
+function aggiornaTastoIntera() {
+  document.getElementById('intera').classList.toggle('visibile', !inVistaIniziale());
+}
+map.on('moveend zoomend', aggiornaTastoIntera);
+fit();
+window.addEventListener('resize', () => { fit(); render(); });
+
+// clic su un pallino -> zoom sulla barca
+document.getElementById('lines').addEventListener('click', e => {
+  const c = e.target.closest('.hit');
+  if (c) map.flyTo([+c.dataset.lat, +c.dataset.lon], Math.max(17, map.getZoom()), {duration:1});
+});
+
+const dots = L.layerGroup().addTo(map);
+const labels = document.getElementById('labels');
+const svg = document.getElementById('lines');
+let vessels = [];
+let arrivi = [];
+
+
+// ---------- telecomando ----------
+let sel = null;                 // mmsi della barca selezionata
+let visibili = [];              // barche disegnate nell'ultimo render: {v, p}
+let pannelloVisibile = true;
+let timerAiuto = null;
+function mostraAiuto(sec) {
+  const a = document.getElementById('aiuto');
+  a.classList.remove('nascosto');
+  clearTimeout(timerAiuto);
+  timerAiuto = setTimeout(() => { a.classList.add('nascosto'); setTimeout(render, 700); }, sec * 1000);
+}
+mostraAiuto(25);
+function barcaSel() { const o = visibili.find(o => o.v.mmsi === sel); return o ? o.v : null; }
+function scegli(dir) {
+  if (!visibili.length) return;
+  const cur = visibili.find(o => o.v.mmsi === sel);
+  if (!cur) {                                       // nessuna selezionata: la piu' vicina al centro
+    const c = {x: innerWidth / 2, y: innerHeight / 2};
+    visibili.sort((a, b) => Math.hypot(a.p.x - c.x, a.p.y - c.y) - Math.hypot(b.p.x - c.x, b.p.y - c.y));
+    sel = visibili[0].v.mmsi; render(); return;
+  }
+  const ax = {sx: [-1, 0], dx: [1, 0], su: [0, -1], giu: [0, 1]}[dir];
+  let best = null, bestScore = Infinity;
+  for (const o of visibili) {
+    if (o === cur) continue;
+    const dx = o.p.x - cur.p.x, dy = o.p.y - cur.p.y;
+    const lungo = dx * ax[0] + dy * ax[1];           // quanto e' avanti nella direzione scelta
+    const lato = Math.abs(dx * ax[1] - dy * ax[0]);  // quanto e' spostata di lato
+    if (lungo <= 2) continue;
+    const score = lungo + lato * 2;
+    if (score < bestScore) { bestScore = score; best = o; }
+  }
+  if (best) { sel = best.v.mmsi; render(); }
+}
+function zoomSu(v) { map.flyTo([v.lat, v.lon], Math.max(17, map.getZoom()), {duration: 1}); }
+function tasto(t) {
+  mostraAiuto(8);
+  const fotoAperta = zoom.classList.contains('aperto');
+  if (t === 'su' || t === 'giu' || t === 'sx' || t === 'dx') { if (!fotoAperta) scegli(t); return; }
+  if (t === 'ok') {
+    if (fotoAperta) { chiudiFoto(); return; }
+    const v = barcaSel();
+    if (!v) { scegli('dx'); return; }
+    if (v.photo) apriFoto(v); else zoomSu(v);
+    return;
+  }
+  if (t === 'play') {
+    if (fotoAperta) chiudiFoto();
+    const v = barcaSel();
+    if (v && inVistaIniziale()) zoomSu(v);
+    else map.flyToBounds(BOUNDS, {padding: [0, 0], duration: 1});
+    return;
+  }
+  if (t === 'piu' || t === 'meno') {
+    const v = barcaSel();
+    const z = map.getZoom() + (t === 'piu' ? 0.75 : -0.75);
+    if (v) map.setZoomAround([v.lat, v.lon], z); else map.setZoom(z);
+    return;
+  }
+  if (t === 'pannello') { pannelloVisibile = !pannelloVisibile; render(); return; }
+}
+// Indietro: true se gestito qui, false = l'app si chiude
+function indietro() {
+  mostraAiuto(8);
+  if (zoom.classList.contains('aperto')) { chiudiFoto(); return true; }
+  if (!inVistaIniziale()) { map.flyToBounds(BOUNDS, {padding: [0, 0], duration: 1}); return true; }
+  if (sel) { sel = null; render(); return true; }
+  return false;
+}
+
+// ---------- foto grande ----------
+const zoom = document.getElementById('zoom');
+function apriFoto(v) {
+  const img = zoom.querySelector('img');
+  img.style.setProperty('--ar', v.ar || 1.5);          // proporzioni della foto: riempie il riquadro
+  img.src = '/photo/' + v.photo;                       // subito quella piccola gia' in cache...
+  const grande = new Image();
+  grande.onload = () => { if (zoom.dataset.k === v.photo) img.src = grande.src; };   // ...poi la grande
+  grande.src = '/foto_grande/' + v.photo;
+  zoom.dataset.k = v.photo;
+  const cl = v.age <= 15 ? 'fresca' : v.age <= SBIADISCI ? 'media' : 'vecchia';
+  zoom.querySelector('.info').innerHTML = '<b>' + esc(v.name) + '</b><span>Size: <b>' + esc(v.size || '-') +
+    '</b></span><span class="eta ' + cl + '">ultima rilevazione: ' + (v.age < 1 ? 'adesso' : quando(v.age) + ' fa') + '</span>';
+  zoom.classList.add('aperto');
+}
+function chiudiFoto() { zoom.classList.remove('aperto'); zoom.dataset.k = ''; }
+zoom.addEventListener('click', e => { if (!e.target.closest('.box') || e.target.closest('.x')) chiudiFoto(); });
+window.addEventListener('keydown', e => { if (e.key === 'Escape') chiudiFoto(); });
+
+function quando(min) { return min < 60 ? min + ' min' : min < 2880 ? Math.round(min / 60) + ' h' : Math.round(min / 1440) + ' giorni'; }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function refresh() {
+  const st = document.getElementById('stato');
+  try {
+    const d = await (await fetch('/api/vessels')).json();
+    vessels = d.vessels;
+    arrivi = d.arrivi || [];
+    st.className = d.error ? 'err' : '';
+    st.textContent = d.error ? ('Errore: ' + d.error)
+                             : (vessels.length + ' barche (' + vessels.filter(v => v.age > SBIADISCI).length + ' non aggiornate da oltre ' + quando(SBIADISCI) + ') - aggiornato ' + (d.updated || '...'));
+    render();
+  } catch (e) { st.className = 'err'; st.textContent = 'Server non raggiungibile'; }
+}
+setInterval(refresh, 10 * 1000);
+refresh();
+map.on('move zoom', render);
+
+// fumetti proporzionati alla finestra: 1920x1080 = dimensione piena
+let K = 1;
+function aggiornaScala() {
+  K = Math.min(innerWidth / 1920, innerHeight / 1080);
+  document.documentElement.style.setProperty('--s', 1.0 * K);
+}
+aggiornaScala();
+
+function render() {
+  aggiornaScala();
+  dots.clearLayers(); labels.innerHTML = ''; svg.innerHTML = '';
+  const W = innerWidth, H = innerHeight;
+  const items = [];
+  for (const v of vessels) {
+    const p = map.latLngToContainerPoint([v.lat, v.lon]);
+    if (p.x < 0 || p.y < 0 || p.x > W || p.y > H) continue;
+    const el = document.createElement('div');
+    el.className = 'bubble';
+    el.style.setProperty('--c', v.color);
+    const ar = Math.max(0.75, Math.min(2.0, v.ar || 1.5));           // proporzione della foto
+    const hFoto = 190 * 1.0 * K / ar;
+    el.innerHTML = (v.photo ? '<img style="height:' + hFoto + 'px" src="/photo/' + v.photo + '">' : '') +
+      '<div class="tx"><div class="nm">' + esc(v.name) + '</div>' +
+      '<div class="sz">Size: <b>' + esc(v.size || '-') + '</b></div>' +
+      '<div class="eta ' + (v.age <= 15 ? 'fresca' : v.age <= SBIADISCI ? 'media' : 'vecchia') + '">ultima rilevazione: ' +
+      (v.age < 1 ? 'adesso' : quando(v.age) + ' fa') + '</div></div>';
+    if (v.age > SBIADISCI) el.classList.add('vecchia');
+    if (v.mmsi === sel) el.classList.add('sel');
+    if (v.photo) { el.classList.add('cliccabile'); el.addEventListener('click', () => apriFoto(v)); }
+    labels.appendChild(el);
+    items.push({v, p, el, w: el.offsetWidth, h: el.offsetHeight});
+  }
+  visibili = items.map(it => ({v: it.v, p: it.p}));
+  if (sel && !visibili.some(o => o.v.mmsi === sel)) sel = null;      // barca uscita dalla vista
+  if (sel) { const it = items.find(o => o.v.mmsi === sel); items.splice(items.indexOf(it), 1); items.unshift(it); it.n = 1e9; }
+  disegnaScala();
+  disegnaArrivi(items.map(it => it.p), W, H);
+  const sc = document.getElementById('scala');
+  if (sc.style.display !== 'none') {
+    const r = sc.getBoundingClientRect();
+    sc.classList.toggle('trasparente', items.some(it => it.p.x > r.left - DOT && it.p.x < r.right + DOT && it.p.y > r.top - DOT && it.p.y < r.bottom + DOT));
+  }
+  place(items, W, H);
+}
+
+// ---------- pannello "barche in scala" ----------
+// Sagome di barche in vista laterale, prua a destra. SOLO linee dritte (poligoni).
+// Coordinate: x 0..100 = lunghezza (poppa -> prua), y verso il basso, galleggiamento y = 0.
+// Tutte usano lo stesso scafo base e le stesse misure di finestre/aste, per uno stile uniforme.
+
+const P = pts => 'M' + pts.map(p => p.join(',')).join(' L') + ' Z';
+const RET = (x, y, w, h) => P([[x, y], [x + w, y], [x + w, y + h], [x, y + h]]);
+
+// scafo base: bordo libero h a poppa, la prua si alza di 'sal', prua inclinata dritta
+function scafo(h, sal = 3, prua = 12) {
+  return P([[0, -h], [100, -h - sal], [100 - prua, 0], [3, 0]]);
+}
+// finestra a nastro (parallelogramma) e oblo' quadrati in fila
+const NASTRO = (x1, x2, y, h = 2.2, incl = 0) => P([[x1, y], [x2, y - incl], [x2, y - incl + h], [x1, y + h]]);
+const OBLO = (x0, n, passo, y, l = 2.4) => Array.from({length: n}, (_, i) => RET(x0 + i * passo, y, l, l));
+// quota del ponte nel punto x (leggermente sotto, per sovrapporsi allo scafo senza fessure)
+const PONTE = (x, h, sal) => -h - sal * x / 100 + 0.8;
+const ASTA = (x, y1, y2, sp = 1.4) => RET(x, y2, sp, y1 - y2);
+
+const SAGOME = {
+  vela: {
+    top: -80, bottom: 1,
+    d: [scafo(6, 1.5, 10),
+        P([[33, PONTE(33, 6, 1.5)], [36, -10], [58, -10], [61, PONTE(61, 6, 1.5)]]),          // tuga
+        P([[42.2, -12], [42.2, -76], [9, -12]]),                    // randa
+        P([[47.2, -72], [47.2, -12], [93, -10.5]]),                 // fiocco
+        ASTA(44, -6, -80)],                                         // albero
+    bianco: [NASTRO(38, 56, -9, 1.3)],
+  },
+  yacht: {              // 15-24 m: coupe' (proporzioni prese dal modello dell'utente)
+    top: -19.5, bottom: 0.6,
+    d: [P([[2.4, 0.6], [0, -2.4], [0, -3.9], [4.7, -3.9], [6.1, -9.3], [100, -9.3], [97.3, -3.8], [96.3, 0.6]]),  // scafo
+        P([[7.5, -13.7], [71.2, -13.7], [74.6, -12.5], [7.5, -12.5]]),   // tetto lungo del ponte principale
+        RET(8.5, -12.6, 0.8, 3.4),                                       // montante del pozzetto
+        P([[25.4, -12.6], [31.6, -12.6], [29.9, -9.2], [23.7, -9.2]]),   // paratia di poppa inclinata
+        P([[69.2, -12.6], [74.6, -12.6], [100, -9.4], [100, -8.8], [77, -8.8]]),   // fronte basso verso prua (sovrapposto allo scafo)
+        P([[26.8, -13.6], [26.8, -18.8], [57, -18.8], [71, -13.6]])],    // ponte superiore
+    bianco: [P([[37.6, -17.8], [55, -17.8], [57.8, -15.6], [37.6, -15.6]]),   // finestra del ponte superiore
+             RET(44.1, -2.5, 1.6, 1.9), RET(51.2, -2.5, 1.6, 1.9), RET(57.3, -2.5, 1.6, 1.9),
+             RET(76.4, -3.6, 1.2, 1.2), RET(82, -3.6, 1.2, 1.2)],       // oblo'
+  },
+  gommone: {
+    top: -23, bottom: 2,
+    d: [P([[8, -6], [80, -7], [97, -14], [86, 0], [12, 0]]),        // carena a V
+        P([[7, -12], [78, -13], [98, -20], [99, -17], [80, -7.6], [7, -6.6]]),  // tubolare che sale a prua
+        RET(34, -17.5, 9, 4.8), RET(34, -22, 1.8, 4.6),              // sedile + schienale
+        RET(2, -22, 8, 8),                                           // calandra motore
+        RET(5, -14.2, 3, 15.4), RET(3.4, 0, 6, 1.6), RET(5, -9, 4, 2)],                // gambo + piede
+    bianco: [RET(3.4, -20, 5.2, 1.2)],
+  },
+  // ---- yacht per fasce di lunghezza ----
+  motoscafo: {          // < 8 m: aperto, consolle centrale
+    top: -22, bottom: 1,
+    d: [scafo(8, 4, 16),
+        RET(44, -16.5, 12, 9), RET(55, -21, 1.4, 4.6),               // consolle + parabrezza
+        RET(28, -12.5, 8, 4.6), RET(28, -16.5, 1.8, 4.2),            // sedile
+        RET(2, -18, 7, 7), RET(4.6, -11.2, 2.6, 12.2)],              // fuoribordo
+    bianco: [RET(46, -15, 8, 2.4), RET(3.4, -16.4, 4.2, 1.2), RET(16, -4.4, 60, 1.2)],
+  },
+  cabinato: {           // 8-15 m: disegno dell'utente (tuga con tetto che sale verso prua, grande finestra)
+    top: -17.3, bottom: 0.6,
+    d: [P([[3, 0.6], [0, -7.1], [100, -11.1], [85.6, 0.6]]),                       // scafo
+        P([[43.8, -8.3], [43.8, -16.8], [72.2, -16.8], [73.6, -16.2], [83, -10.5], [83, -10.1]])],  // tuga: tetto piatto, fronte inclinato fino alla coperta
+    bianco: [RET(53.9, -15.8, 17.8, 4.2),                                                    // finestra
+             RET(17.7, -4.1, 59.8, 1.2)],                                                 // riga sullo scafo
+  },
+  // 15-24 m: 'yacht' (flybridge)
+  superyacht: {         // 24-40 m: yacht moderno (disegno corretto a mano dall'utente)
+    top: -31, bottom: 0.6,
+    d: [P([[1.6, 0.6], [0, -2], [0, -4.4], [4.1, -4.4], [6.1, -9.4], [100, -9.4], [96.4, 0.6]]),   // scafo
+        RET(7.8, -14.2, 18.4, 1), RET(8.4, -13.2, 0.8, 3.9),             // tetto del pozzetto (fino alla tuga) + montante
+        RET(15.2, -10.1, 8, 0.8), RET(22.6, -13.2, 3.6, 3.9),            // divanetto e paratia
+        P([[26, -9.3], [26, -15.6], [64.7, -15.6], [71.8, -12.9], [77.4, -12.1], [98.5, -9.3]]),   // ponte principale (fronte in linea col flybridge)
+        P([[26, -15.4], [26, -18.2], [57.8, -18.2], [65.2, -15.4]]),                 // flybridge: fronte dalla fine della lamella
+        P([[6.1, -19.4], [56.4, -19.4], [57.8, -18.2], [6.1, -18.2]]),   // tetto del flybridge (lamella lunga)
+        RET(30.5, -22.8, 0.8, 3.6), RET(46.9, -22.8, 0.9, 3.6),          // montanti hardtop
+        P([[26, -24.4], [51.1, -24.4], [54.4, -22.8], [26, -22.8]]),     // hardtop
+        RET(29.4, -25.9, 1.4, 1.6), RET(28, -28.3, 4.8, 2.5), RET(29.9, -30.9, 0.7, 2.7)],   // radome
+    bianco: [RET(26.7, -12.65, 25.7, 3), RET(55.1, -12.15, 21.6, 2.5),   // vetrate ponte principale
+             RET(37.2, -18.25, 16.3, 2.5),                               // parabrezza flybridge
+             RET(42.5, -3.6, 2, 2), RET(49.5, -3.6, 2, 2), RET(55.6, -3.6, 2, 2),
+             RET(66.6, -3.6, 3.6, 2.2), RET(74.6, -4.4, 1.5, 1.5), RET(80.2, -4.4, 1.5, 1.5)],   // finestrature scafo
+  },
+  megayacht: {          // > 40 m: proporzioni prese dal modello (scafo lungo e basso, sovrastruttura compatta)
+    top: -29, bottom: 0.6,
+    d: [P([[0, 0], [4.3, -6.8], [12.8, -6.8], [13.8, -8.1], [100, -8.6], [87.2, 0]]),   // scafo
+        P([[18.1, -7.9], [18.1, -10.4], [66.5, -10.4], [68.4, -7.9]]),   // ponte 1: stessa inclinazione, fino allo scafo
+        P([[19.7, -10], [19.7, -14.3], [63.5, -14.3], [66.8, -10]]),     // ponte 2: fronte in linea con la plancia
+        P([[33.5, -14], [33.5, -18.3], [45, -18.3], [45, -19.3], [54, -19.3], [54, -18.3],
+           [60.4, -18.3], [63.6, -14]]),                                 // ponte 3 (plancia)
+        RET(34.6, -21.6, 1.2, 3.6), RET(33.4, -21.9, 8.6, 0.9), RET(36.6, -23.4, 2.6, 1.6),  // radar
+        RET(48.6, -28.6, 0.9, 10)],                                      // antenna
+    bianco: [
+        // oblo' dello scafo a gruppi
+        ...[16.5, 19.7, 33, 36.7, 40.6, 53.2, 57.2, 61, 74, 77.6].map(x => RET(x, -5.4, 2, 1.2)),
+        // ponte 1
+        RET(21.3, -9.7, 3.8, 1.2), RET(27.7, -9.7, 4.8, 1.2), ...[41, 56.4].map(x => RET(x, -9.9, 2, 1)),
+        RET(64.2, -9.7, 8, 0.75),                                       // lamella sul fronte
+        RET(20, -11, 16, 0.9), RET(21, -12.6, 12.5, 0.55),          // stacchi tra i ponti a poppa (effetto lamelle)
+        // ponte 2
+        ...[46.6, 50.6].map(x => RET(x, -13.1, 2, 1.1)), RET(57.8, -13.1, 5.6, 1.1),
+        // ponte 3
+        ...[38.2, 42.2].map(x => RET(x, -17, 2, 1.1)), RET(49.4, -17, 10.4, 1.1)],
+  },
+  pesca: {
+    top: -46, bottom: 1,
+    d: [scafo(10, 6, 10),
+        P([[56, PONTE(56, 10, 6)], [56, -28], [77, -28], [79, PONTE(79, 10, 6)]]),         // timoneria
+        ASTA(66, -28, -46), ASTA(15, -10, -40),                     // alberi
+        P([[15.6, -40], [41, -13.5], [39.4, -12.6], [15, -38]]),    // bigo
+        RET(27, -14, 12, 3.4)],                                     // verricello
+    bianco: [RET(59, -26, 7, 3.2), RET(68, -26, 7, 3.2)],
+  },
+  rimorchiatore: {
+    top: -48, bottom: 1,
+    d: [scafo(9, 6, 10),
+        P([[30, PONTE(30, 9, 6)], [30, -20], [78, -20], [81, PONTE(81, 9, 6)]]),
+        P([[44, -20], [46, -32], [72, -32], [74, -20]]),
+        P([[33, -20], [34.5, -40], [42, -40], [42, -20]]),           // ciminiera
+        ASTA(58, -32, -48)],
+    bianco: [RET(48, -30, 9, 3.4), RET(59, -30, 10.4, 3.4), RET(33.6, -37.4, 7, 1.4),
+             ...[14, 27, 40, 53, 66].map(x => RET(x, -5.4, 4.4, 3.4))],      // parabordi
+  },
+  passeggeri: {
+    top: -38, bottom: 1,
+    d: [scafo(9, 4, 10),
+        P([[5, PONTE(5, 9, 4)], [7, -18], [84, -18], [92, PONTE(92, 9, 4)]]),
+        P([[11, -18], [13, -27], [74, -27], [80, -18]]),
+        P([[30, -27], [32, -33], [60, -33], [64, -27]]),
+        RET(40, -38, 8, 5)],
+    bianco: [...OBLO(11, 12, 6.2, -15.4), ...OBLO(17, 9, 6.2, -24.4), NASTRO(34, 58, -31.2, 1.6),
+             NASTRO(8, 86, -5.2, 1.3, 1.6)],
+  },
+  cargo: {
+    top: -36, bottom: 1,
+    d: [scafo(12, 2, 8),
+        RET(3, -32, 15, 20), ASTA(9, -32, -36),
+        ...[0, 1, 2, 3, 4, 5].map(i => RET(21 + i * 12.4, i % 2 ? -26 : -30, 11.4, i % 2 ? 14 : 18))],
+    bianco: [NASTRO(5, 16, -29.4, 1.8), NASTRO(5, 16, -25, 1.4)],
+  },
+  cisterna: {
+    top: -32, bottom: 1,
+    d: [scafo(10, 2, 8),
+        RET(3, -28, 15, 18), ASTA(10, -28, -32),
+        P([[20, -13], [94, -14.4], [94, -12.2], [20, -10.8]]),      // tubazioni
+        P([[20, -17.2], [93, -18.6], [93, -17.4], [20, -16]]),      // passerella
+        ...[30, 46, 62, 78].map(x => RET(x, -17, 6, 5))],
+    bianco: [NASTRO(5, 16, -25.4, 1.8), NASTRO(5, 16, -21, 1.4)],
+  },
+};
+
+// tipo AIS (testo) -> sagoma
+function sagomaPerTipo(tipo, lunghezza) {
+  const t = (tipo || '').toLowerCase();
+  if (/sail/.test(t)) return 'vela';
+  if (/fish/.test(t)) return 'pesca';
+  if (/tug|tow/.test(t)) return 'rimorchiatore';
+  if (/passenger|ferry|cruise/.test(t)) return 'passeggeri';
+  if (/tanker/.test(t)) return 'cisterna';
+  if (/cargo|container|bulk/.test(t)) return 'cargo';
+  if (/pilot|search|rescue|law|port|high speed|military/.test(t)) return 'gommone';
+  // diporto e sconosciuti: sagoma in base alla lunghezza
+  if (!lunghezza) return 'yacht';
+  if (lunghezza < 8) return 'motoscafo';
+  if (lunghezza < 15) return 'cabinato';
+  if (lunghezza < 24) return 'yacht';
+  if (lunghezza < 40) return 'superyacht';
+  return 'megayacht';
+}
+
+function svgSagoma(nome, w, colore) {
+  const s = SAGOME[nome], h = (s.bottom - s.top) * w / 100;
+  const p = (d, f) => `<path d="${d}" fill="${f}"/>`;
+  return {
+    h,
+    svg: `<svg width="${w}" height="${h}" viewBox="0 ${s.top} 100 ${s.bottom - s.top}" shape-rendering="geometricPrecision">` +
+         s.d.map(d => p(d, colore)).join('') + s.bianco.map(d => p(d, '#fff')).join('') + '</svg>',
+  };
+}
+
+function disegnaScala() {
+  const box = document.getElementById('scala');
+  const conL = vessels.filter(v => v.len > 0).sort((a, b) => b.len - a.len || a.age - b.age);
+  const senza = vessels.filter(v => !(v.len > 0));
+  if (!vessels.length || !pannelloVisibile) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const s = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--s')) || 1;
+  const larg = box.clientWidth - 24 * s;
+  const maxL = Math.max(...conL.map(v => v.len), 1);
+  const altMax = innerHeight * 64.0 / 100 - 110 * s;      // spazio per le sagome
+  // scala unica (pixel per metro): la barca piu' lunga occupa tutta la larghezza,
+  // ma se le sagome non ci stanno in altezza si riduce tutto insieme
+  let ppm = larg / maxL;
+  for (let k = 0; k < 6; k++) {
+    let tot = 0;
+    for (const v of conL) tot += svgSagoma(sagomaPerTipo(v.type, v.len), v.len * ppm, v.color).h + 22 * s;
+    if (tot <= altMax) break;
+    ppm *= Math.max(0.5, altMax / tot);
+  }
+  let html = '<h3>Barche in scala</h3>';
+  for (const v of conL) {
+    const sg = svgSagoma(sagomaPerTipo(v.type, v.len), v.len * ppm, v.color);
+    html += '<div class="riga' + (v.age > SBIADISCI ? ' vecchia' : '') + '"><div class="top"><span class="nm"><i style="background:' +
+            v.color + '"></i>' + esc(v.name) + '</span><span class="lm">' + fmtM(v.len) + (v.wid ? ' × ' + fmtM(v.wid) : '') +
+            ' m</span></div>' + sg.svg + '</div>';
+  }
+  // righello con la stessa scala
+  const passo = [1, 2, 5, 10, 20, 50].find(p => p * ppm >= 28 * s) || 50;
+  const nTacche = Math.max(1, Math.min(Math.floor(larg / (passo * ppm)), Math.ceil(maxL / passo)));
+  let r = '<svg width="' + larg + '" height="' + (22 * s) + '"><line x1="0" y1="4" x2="' + (nTacche * passo * ppm) + '" y2="4" stroke="#345" stroke-width="1.5"/>';
+  for (let i = 0; i <= nTacche; i++) {
+    const x = i * passo * ppm;
+    r += '<line x1="' + x + '" y1="0" x2="' + x + '" y2="8" stroke="#345" stroke-width="1.5"/>' +
+         '<text x="' + x + '" y="' + (19 * s) + '" font-size="' + (10 * s) + '" fill="#345" text-anchor="' + (i ? 'middle' : 'start') + '">' +
+         (i * passo) + (i === nTacche ? ' m' : '') + '</text>';
+  }
+  html += '<div class="righello">' + r + '</svg></div>';
+  if (senza.length) html += '<div class="nd">Senza misure: ' + senza.map(v => esc(v.name)).join(', ') + '</div>';
+  box.innerHTML = html;
+}
+function fmtM(x) { return Number.isInteger(x) ? x : x.toFixed(1); }
+
+function overlap(a, b, g) {
+  const x = Math.min(a.x + a.w + g, b.x + b.w) - Math.max(a.x - g, b.x);
+  const y = Math.min(a.y + a.h + g, b.y + b.h) - Math.max(a.y - g, b.y);
+  return (x > 0 && y > 0) ? x * y : 0;
+}
+function nearest(p, r) {
+  return {x: Math.max(r.x, Math.min(p.x, r.x + r.w)), y: Math.max(r.y, Math.min(p.y, r.y + r.h))};
+}
+function segHitsRect(p, q, r) {          // il segmento p-q attraversa il rettangolo r?
+  for (let t = 0.08; t < 0.95; t += 0.08) {
+    const x = p.x + (q.x - p.x) * t, y = p.y + (q.y - p.y) * t;
+    if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) return true;
+  }
+  return false;
+}
+
+function place(items, W, H) {
+  const M = 6;
+  const dotRects = items.map(it => ({x: it.p.x - DOT - 3, y: it.p.y - DOT - 3, w: 2 * DOT + 6, h: 2 * DOT + 6}));
+  // zone vietate: pannelli, pulsanti, barra di stato -> nessun fumetto ci puo' andare sopra
+  const vietate = zoneOccupate();
+  const arr = document.getElementById('arrivi');
+  if (arr && arr.style.display === 'block') {
+    const b = arr.getBoundingClientRect();
+    vietate.push({x: b.left - 8, y: b.top - 8, w: b.width + 16, h: b.height + 16});
+  }
+  for (const it of items)
+    it.n = items.filter(o => Math.hypot(o.p.x - it.p.x, o.p.y - it.p.y) < 300).length;
+  items.sort((a, b) => (b.v.mmsi === sel) - (a.v.mmsi === sel) || b.n - a.n || a.p.y - b.p.y);     // prima la selezionata, poi le zone affollate
+  const placed = [];
+  const cerca = (it, raggi) => {
+    let best = null, bestScore = Infinity;
+    for (const r0 of raggi) {
+      const r = r0 * K;
+      for (const a of ANGLES) {
+        const dx = Math.cos(a), dy = Math.sin(a);
+        const cx = it.p.x + dx * (r + it.w / 2), cy = it.p.y + dy * (r + it.h / 2);
+        const rc = {x: cx - it.w / 2, y: cy - it.h / 2, w: it.w, h: it.h};
+        if (rc.x < M || rc.y < M || rc.x + rc.w > W - M || rc.y + rc.h > H - M) continue;
+        if (vietate.some(v => overlap(rc, v, 0) > 0)) continue;              // vietato: si scarta
+        const fine = nearest(it.p, rc);
+        // linea sotto un pannello (non vale per il pannello sotto cui si trova la barca stessa)
+        if (vietate.some(v => !dentro(it.p, v, 0) && segHitsRect(it.p, fine, v))) continue;
+        let ov = 0, cross = 0;
+        for (const q of placed) { ov += overlap(rc, q.rc, GAP); if (segHitsRect(it.p, fine, q.rc)) cross++; }
+        for (const d of dotRects) ov += overlap(rc, d, 2);
+        for (const q of placed) if (segHitsRect(q.p, nearest(q.p, q.rc), rc)) cross++;
+        const score = ov * 50 + cross * 60 + r;
+        if (ov === 0 && cross <= 1) return {rc, libero: true};
+        if (score < bestScore) { bestScore = score; best = rc; }
+      }
+    }
+    return best ? {rc: best, libero: false} : null;
+  };
+  for (const it of items) {
+    let ris = cerca(it, RADII);
+    if (!ris || !ris.libero) {                       // poco spazio: fumetto compatto (senza foto)
+      const img = it.el.querySelector('img');
+      if (img) {
+        img.remove(); it.el.classList.add('compatto');
+        it.w = it.el.offsetWidth; it.h = it.el.offsetHeight;
+        const r2 = cerca(it, RADII);
+        if (r2 && (!ris || r2.libero || !ris.libero)) ris = r2;
+      }
+    }
+    if (!ris || !ris.libero) {                       // ultima risorsa: piu' lontano
+      const r3 = cerca(it, [760, 900, 1050]);
+      if (r3 && (!ris || r3.libero)) ris = r3;
+    }
+    const best = ris ? ris.rc : {x: Math.min(Math.max(it.p.x + 20, M), W - it.w - M),
+                                 y: Math.min(Math.max(it.p.y - it.h - 20, M), H - it.h - M), w: it.w, h: it.h};
+    placed.push({p: it.p, rc: best, it});
+    it.el.style.left = best.x + 'px';
+    it.el.style.top = best.y + 'px';
+  }
+  dotRects.push(...vietate.map(v => ({...v, vietata: true})));
+  disegnaLinee(placed, dotRects);
+}
+
+// --- linee: dritte se la strada e' libera, altrimenti curve che aggirano fumetti e barche ---
+function quad(a, c, b, n) {
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, u = 1 - t;
+    pts.push({x: u*u*a.x + 2*u*t*c.x + t*t*b.x, y: u*u*a.y + 2*u*t*c.y + t*t*b.y});
+  }
+  return pts;
+}
+function dentro(pt, r, g) { return pt.x > r.x - g && pt.x < r.x + r.w + g && pt.y > r.y - g && pt.y < r.y + r.h + g; }
+function incrocio(a, b, c, d) {
+  const o = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  return (o(a, b, c) * o(a, b, d) < 0) && (o(c, d, a) * o(c, d, b) < 0);
+}
+// ---------- barche in arrivo ----------
+function tempo(min) {
+  if (min < 1) return 'ora';
+  if (min < 60) return 'tra ' + Math.round(min) + ' min';
+  const h = Math.floor(min / 60), m = Math.round(min % 60);
+  return 'tra ' + h + ' h' + (m ? ' ' + String(m).padStart(2, '0') : '');
+}
+function num1(x) { return String(x).replace('.', ','); }
+// posizioni candidate del riquadro "In arrivo" (frazioni della finestra: x = centro, y = bordo basso)
+// la prima e' quella preferita (in basso al centro, sul mare); se li' ci sono barche si passa alla successiva
+const POSTI_ARRIVI = [[0.46, 0.95], [0.34, 0.95], [0.58, 0.95], [0.46, 0.7], [0.34, 0.45], [0.46, 0.3]];
+let postoArrivi = 0;
+function zoneOccupate() {
+  // pannelli e pulsanti fissi: nessun fumetto o pannello mobile ci puo' andare sopra
+  return ['scala', 'stato', 'aiuto', 'intera'].map(id => document.getElementById(id))
+    .filter(e => e && getComputedStyle(e).display !== 'none' && getComputedStyle(e).visibility !== 'hidden')
+    .map(e => { const r = e.getBoundingClientRect(); return {x: r.left - 8, y: r.top - 8, w: r.width + 16, h: r.height + 16}; });
+}
+function disegnaArrivi(punti, W, H) {
+  const box = document.getElementById('arrivi');
+  if (!arrivi.length) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  let h = '<h3>In arrivo</h3>';
+  for (const a of arrivi) {
+    h += '<div class="a"><div class="r1"><span class="nm"><i style="background:' + a.color + '"></i>' + esc(a.name) +
+         '</span><span class="eta">' + tempo(a.eta) + '</span></div><div class="r2">' + num1(a.dist) + ' NM · ' +
+         num1(a.speed) + ' nodi' + (a.len ? ' · ' + fmtM(a.len) + ' m' : '') + '</div></div>';
+  }
+  h += '<div class="nota">stima in linea retta da rotta e velocit&agrave;</div>';
+  box.innerHTML = h;
+  // scelta del posto: senza barche (con margine per i loro fumetti) e senza pannelli/pulsanti
+  const bw = box.offsetWidth, bh = box.offsetHeight, marg = 60, fissi = zoneOccupate();
+  const rett = i => {
+    const [fx, fy] = POSTI_ARRIVI[i];
+    const x = Math.min(Math.max(fx * W - bw / 2, 8), W - bw - 8), y = Math.min(Math.max(fy * H - bh, 8), H - bh - 8);
+    return {x, y, w: bw, h: bh};
+  };
+  const costo = r => punti.filter(p => p.x > r.x - marg && p.x < r.x + r.w + marg && p.y > r.y - marg && p.y < r.y + r.h + marg).length * 10
+                   + fissi.reduce((t, f) => t + (overlap(r, f, 0) > 0 ? 1000 : 0), 0);
+  // si resta dove si e' finche' il posto e' libero (niente salti a ogni aggiornamento)
+  if (costo(rett(postoArrivi)) > 0) {
+    let migliore = 0, cMin = Infinity;
+    POSTI_ARRIVI.forEach((_, i) => { const c = costo(rett(i)); if (c < cMin) { cMin = c; migliore = i; } });
+    postoArrivi = migliore;
+  }
+  const r = rett(postoArrivi);
+  box.style.left = r.x + 'px';
+  box.style.top = r.y + 'px';
+}
+
+// freccia sul bordo della mappa nel punto in cui la barca entrera'
+function frecceArrivi() {
+  const fr = document.getElementById('frecce');
+  fr.innerHTML = '';
+  const W = innerWidth, H = innerHeight, M = 16;
+  const pannelli = ['scala', 'arrivi'].map(id => document.getElementById(id))
+    .filter(e => e && getComputedStyle(e).display !== 'none').map(e => e.getBoundingClientRect());
+  for (const a of arrivi) {
+    const p = map.latLngToContainerPoint([a.ing_lat, a.ing_lon]);
+    let x = Math.min(Math.max(p.x, M), W - M), y = Math.min(Math.max(p.y, M), H - M);
+    const sinistra = x < W / 2;
+    const testo = esc(a.name) + ' · ' + tempo(a.eta);
+    const lw = testo.length * 7 + 20;                         // larghezza stimata etichetta
+    // se freccia o etichetta finiscono dietro un pannello, scorro lungo il bordo
+    for (const r of pannelli) {
+      const ex = sinistra ? x - 10 : x - lw, ew = lw + 10;
+      if (ex < r.right + 6 && ex + ew > r.left - 6 && y > r.top - 14 && y < r.bottom + 14) {
+        if (x <= M + 1 || x >= W - M - 1) y = (y - r.top < r.bottom - y) ? r.top - 16 : r.bottom + 16;
+        else x = (x - r.left < r.right - x) ? r.left - 16 : r.right + 16;
+      }
+    }
+    const g = 'translate(' + x + ',' + y + ') rotate(' + a.course + ')';
+    fr.insertAdjacentHTML('beforeend',
+      '<g transform="' + g + '"><path d="M0,-11 L8,7 L0,3 L-8,7 Z" fill="' + a.color +
+      '" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></g>');
+    const dx = sinistra ? 14 : -14, ancora = sinistra ? 'start' : 'end';
+    const dy = y < 40 ? 22 : (y > H - 40 ? -16 : 4);
+    fr.insertAdjacentHTML('beforeend',
+      '<text x="' + (x + dx) + '" y="' + (y + dy) + '" text-anchor="' + ancora + '" font-size="12" font-weight="700"' +
+      ' fill="#123" stroke="#fff" stroke-width="3.5" paint-order="stroke">' + testo + '</text>');
+  }
+}
+
+function disegnaLinee(placed, dotRects) {
+  const fatte = [];
+  // prima le linee piu' lunghe (sono quelle con meno scelta)
+  const ordine = placed.slice().sort((a, b) =>
+    Math.hypot(b.rc.x - b.p.x, b.rc.y - b.p.y) - Math.hypot(a.rc.x - a.p.x, a.rc.y - a.p.y));
+  for (const pl of ordine) {
+    const a = pl.p, b = nearest(a, pl.rc);
+    const L = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const nx = -(b.y - a.y) / L, ny = (b.x - a.x) / L;
+    // sempre un po' curva; se serve, curva di piu' per aggirare gli ostacoli
+    const base = Math.max(12 * K, 0.22 * L);
+    const OFF = [1, -1, 1.6, -1.6, 2.4, -2.4, 0.5, -0.5, 3.4, -3.4].map(f => f * base);
+    let best = null, bestScore = Infinity;
+    for (const o of OFF) {
+      const c = {x: (a.x + b.x) / 2 + nx * o, y: (a.y + b.y) / 2 + ny * o};
+      const pts = quad(a, c, b, 24);
+      let hit = 0, cross = 0;
+      for (let i = 2; i < pts.length - 2; i++) {
+        for (const q of placed) if (q !== pl && dentro(pts[i], q.rc, 4)) hit++;
+        for (const d of dotRects) if (dentro(pts[i], d, 0) && Math.hypot(pts[i].x - a.x, pts[i].y - a.y) > 2 * DOT) hit += d.vietata ? 20 : 1;
+      }
+      for (const f of fatte)
+        for (let i = 1; i < pts.length; i++)
+          for (let j = 1; j < f.length; j++)
+            if (incrocio(pts[i-1], pts[i], f[j-1], f[j])) cross++;
+      const score = hit * 100 + cross * 40 + Math.abs(o) / base;
+      if (score < bestScore) { bestScore = score; best = {c, pts}; }
+      if (hit === 0 && cross === 0) break;
+    }
+    fatte.push(best.pts);
+    // parte dal CENTRO del cerchio e finisce un po' DENTRO il fumetto: entrambi stanno sopra
+    // la linea, quindi le estremita' sono coperte e il collegamento e' pieno
+    const cx = pl.rc.x + pl.rc.w / 2, cy = pl.rc.y + pl.rc.h / 2;
+    const dc = Math.hypot(cx - b.x, cy - b.y) || 1, entra = Math.min(12, dc);
+    const e = {x: b.x + (cx - b.x) / dc * entra, y: b.y + (cy - b.y) / dc * entra};
+    const d = 'M' + a.x + ',' + a.y + ' Q' + best.c.x + ',' + best.c.y + ' ' + e.x + ',' + e.y;
+    svg.insertAdjacentHTML('beforeend',
+      '<path d="' + d + '" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>' +
+      '<path d="' + d + '" fill="none" stroke="' + pl.it.v.color + '" stroke-width="2.5" stroke-linecap="round"' +
+      (pl.it.v.age > SBIADISCI ? ' stroke-dasharray="6 5"' : '') + '/>');
+  }
+  // cerchi delle barche: dopo le linee, quindi sopra di esse (i fumetti stanno ancora piu' sopra)
+  for (const pl of placed) {
+    const v = pl.it.v, vecchia = v.age > SBIADISCI;
+    if (v.mmsi === sel) svg.insertAdjacentHTML('beforeend',
+      '<circle cx="' + pl.p.x + '" cy="' + pl.p.y + '" r="' + (DOT + 8) + '" fill="rgba(255,212,0,.35)" stroke="#ffd400" stroke-width="3"/>');
+    svg.insertAdjacentHTML('beforeend',
+      '<circle cx="' + pl.p.x + '" cy="' + pl.p.y + '" r="' + DOT + '" fill="#fff" stroke="#fff" stroke-width="2"/>' +
+      '<circle cx="' + pl.p.x + '" cy="' + pl.p.y + '" r="' + DOT + '" fill="' + v.color + '"' +
+      (vecchia ? ' fill-opacity="0.45"' : '') + ' stroke="#fff" stroke-width="2"/>' +
+      '<circle class="hit" cx="' + pl.p.x + '" cy="' + pl.p.y + '" r="' + (DOT + 9) + '" fill="transparent"' +
+      ' data-lat="' + v.lat + '" data-lon="' + v.lon + '"/>');
+  }
+  frecceArrivi();
+}
+
+
+</script></body></html>
