@@ -170,10 +170,11 @@ function mostraAiuto(sec) {
 }
 mostraAiuto(25);
 // ordine fisso per Su/Giu: lo stesso del pannello "Barche in scala" (dalla piu' lunga),
-// poi quelle senza misure. Si rigenera solo quando una barca compare o sparisce.
+// poi quelle senza misure. Si rigenera solo quando una barca compare, sparisce o riceve le misure.
 let ordine = [], firmaOrdine = '';
 function aggiornaOrdine() {
-  const firma = vessels.map(v => v.mmsi).sort().join(',');
+  // la firma comprende anche la lunghezza: quando arrivano le misure di una barca l'ordine si rifa'
+  const firma = vessels.map(v => v.mmsi + ':' + (v.len || 0)).sort().join(',');
   if (firma === firmaOrdine) return;
   firmaOrdine = firma;
   ordine = vessels.slice().sort((a, b) => ((b.len > 0) - (a.len > 0)) || (b.len || 0) - (a.len || 0)
