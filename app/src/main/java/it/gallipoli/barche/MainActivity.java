@@ -58,6 +58,17 @@ public class MainActivity extends Activity {
 
     /** Fa la richiesta dall'interno di una pagina MarineTraffic aperta in una WebView invisibile. */
     private String fetchMt(final String path) throws Exception {
+        return fetchMt(path, false);
+    }
+
+    /** Immagine (es. foto MarineTraffic) scaricata dalla pagina invisibile. */
+    private byte[] fetchMtByte(String url) throws Exception {
+        String b64 = fetchMt(url, true);
+        if (b64 == null || b64.isEmpty()) throw new Exception("MarineTraffic: immagine vuota");
+        return android.util.Base64.decode(b64, android.util.Base64.DEFAULT);
+    }
+
+    private String fetchMt(final String path, boolean binario) throws Exception {
         if (!mtPronta) {
             final CountDownLatch pronta = new CountDownLatch(1);
             ui.post(new Runnable() {
@@ -82,7 +93,14 @@ public class MainActivity extends Activity {
         final int id = mtId.incrementAndGet();
         CountDownLatch latch = new CountDownLatch(1);
         synchronized (mtRisposte) { mtAttese.put(id, latch); }
-        final String js = "fetch(" + org.json.JSONObject.quote(path) + ", {headers: {'X-Requested-With': 'XMLHttpRequest'}})"
+        final String js = binario
+                ? "fetch(" + org.json.JSONObject.quote(path) + ")"
+                + ".then(function(r){if(!r.ok) throw 'HTTP ' + r.status; return r.blob();})"
+                + ".then(function(b){return new Promise(function(ok, ko){var f = new FileReader();"
+                + " f.onload = function(){ok(f.result);}; f.onerror = ko; f.readAsDataURL(b);});})"
+                + ".then(function(d){PonteMT.risultato(" + id + ", d.substring(d.indexOf(',') + 1), null);})"
+                + ".catch(function(e){PonteMT.risultato(" + id + ", null, String(e));});"
+                : "fetch(" + org.json.JSONObject.quote(path) + ", {headers: {'X-Requested-With': 'XMLHttpRequest'}})"
                 + ".then(function(r){return r.text();})"
                 + ".then(function(t){PonteMT.risultato(" + id + ", t, null);})"
                 + ".catch(function(e){PonteMT.risultato(" + id + ", null, String(e));});";
@@ -113,6 +131,7 @@ public class MainActivity extends Activity {
 
         motore = new Motore(getCacheDir(), new Motore.BrowserMT() {
             @Override public String fetch(String path) throws Exception { return fetchMt(path); }
+            @Override public byte[] fetchByte(String url) throws Exception { return fetchMtByte(url); }
         });
 
         web = new WebView(this);

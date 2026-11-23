@@ -64,6 +64,7 @@ public class Motore {
     /** Per leggere MarineTraffic con un browser (WebView nascosta) se blocca le richieste semplici. */
     public interface BrowserMT {
         String fetch(String path) throws Exception;
+        byte[] fetchByte(String url) throws Exception;
     }
 
     // ------------------------------------------------------------------ AREA
@@ -452,17 +453,31 @@ public class Motore {
         return dentro;
     }
 
+    /** Immagine MarineTraffic: richiesta semplice, oppure dalla pagina invisibile se MT blocca. */
+    private byte[] mtImg(String url) {
+        byte[] d = null;
+        if (!"browser".equals(modoMt)) {
+            try {
+                d = httpGet(url, MT + "/en/ais/home", "image/avif,image/webp,image/*,*/*;q=0.8", false);
+            } catch (Exception ignored) { }
+        }
+        if (d == null && browserMT != null) {
+            try { d = browserMT.fetchByte(url); } catch (Exception ignored) { }
+        }
+        if (d == null) return null;
+        int[] dim = dimensioniImg(d);
+        return (dim != null && dim[1] > 0 && d.length > 1000) ? d : null;
+    }
+
     double scaricaFotoMt(String shipId) {
         String base = MT + "/photoCollection/getAssetDefaultPhoto?asset_id=" + shipId + "&asset_type_id=0&photo_size=";
         for (String size : new String[]{"800", "300"}) {
-            try {
-                byte[] data = httpGet(base + size, MT + "/en/ais/home", "image/avif,image/webp,image/*,*/*;q=0.8", false);
+            byte[] data = mtImg(base + size);
+            if (data != null) {
+                try { scrivi(new File(fotoDir, "mt" + shipId + ".img"), data); } catch (Exception ignored) { }
                 int[] dim = dimensioniImg(data);
-                if (data.length > 1000 && dim != null && dim[1] > 0) {
-                    scrivi(new File(fotoDir, "mt" + shipId + ".img"), data);
-                    return (double) dim[0] / dim[1];
-                }
-            } catch (Exception ignored) { }
+                return (double) dim[0] / dim[1];
+            }
         }
         return Double.NaN;
     }
@@ -480,7 +495,7 @@ public class Motore {
         if (chiave.startsWith("mt")) {
             String base = MT + "/photoCollection/getAssetDefaultPhoto?asset_id=" + chiave.substring(2) + "&asset_type_id=0&photo_size=";
             for (String size : new String[]{"1600", "1200", "800", "600", "300"}) {
-                scelta = prendiImg(base + size, MT + "/en/ais/home");
+                scelta = mtImg(base + size);
                 if (scelta != null) break;
             }
         } else {
@@ -952,12 +967,15 @@ public class Motore {
                         if (!conFotoVf.contains(sid) && (fm == null || now() - fm[0] > CACHE_SCHEDE_ORE * 3600)) servono.add(sid);
                     }
                 }
+                int trovate = 0;
                 for (String sid : servono) {
                     if (fermo) break;
                     double ar = scaricaFotoMt(sid);
+                    if (!Double.isNaN(ar)) trovate++;
                     synchronized (lock) { fotoMt.put(sid, new double[]{now(), ar}); }
                     if (aspetta(PAUSA_TRA_RICHIESTE_MS)) break;
                 }
+                if (!servono.isEmpty()) log("MarineTraffic: foto trovate " + trovate + " su " + servono.size());
             }
 
             if (aspetta(POLL_POSIZIONI_S * 1000L)) break;
