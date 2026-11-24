@@ -275,7 +275,11 @@ async function refresh() {
     const d = await (await fetch('/api/vessels')).json();
     vessels = d.vessels;
     aggiornaOrdine();
-    arrivi = d.arrivi || [];
+    // una barca gia' sulla mappa non e' piu' "in arrivo", anche se l'ultima lettura di MarineTraffic
+    // (ogni 3 minuti) la vedeva ancora fuori: niente freccia doppia
+    const normN = n => String(n || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const presenti = new Set(vessels.map(v => normN(v.name)));
+    arrivi = (d.arrivi || []).filter(a => !presenti.has(normN(a.name)));
     st.className = d.error ? 'err' : '';
     st.textContent = d.error ? ('Errore: ' + d.error)
                              : (vessels.length + ' barche (' + vessels.filter(v => v.age > SBIADISCI).length + ' non aggiornate da oltre ' + quando(SBIADISCI) + ') - aggiornato ' + (d.updated || '...'));
@@ -326,7 +330,7 @@ function render() {
   const sc = document.getElementById('scala');
   if (sc.style.display !== 'none') {
     const r = sc.getBoundingClientRect();
-    sc.classList.toggle('trasparente', items.some(it => it.p.x > r.left - DOT && it.p.x < r.right + DOT && it.p.y > r.top - DOT && it.p.y < r.bottom + DOT));
+    sc.classList.add('trasparente');               // pannello sempre trasparente
   }
   place(items, W, H);
 }
