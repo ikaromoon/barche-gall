@@ -139,6 +139,7 @@ public class MainActivity extends Activity {
                 @Override public String fetch(String path) throws Exception { return schermata().fetchMt(path); }
                 @Override public byte[] fetchByte(String url) throws Exception { return schermata().fetchMtByte(url); }
             });
+            motore.caricaFotoPersonali(leggiFotoPersonali());
         }
 
         web = new WebView(this);
@@ -197,7 +198,7 @@ public class MainActivity extends Activity {
             }
             if (path.startsWith("/foto_grande/")) {
                 String chiave = path.substring("/foto_grande/".length());
-                if (!chiave.matches("(mt)?\\d+")) return vuota(404);
+                if (!chiave.matches("(mt|p)?\\d+")) return vuota(404);
                 Object[] f = motore.fotoGrande(chiave);
                 return f == null ? vuota(404) : risposta((String) f[1], (byte[]) f[0], true);
             }
@@ -231,6 +232,18 @@ public class MainActivity extends Activity {
         while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
         in.close();
         return out.toByteArray();
+    }
+
+    /** Foto della cartella assets/foto (vuota o assente = nessuna foto personale). */
+    private Map<String, byte[]> leggiFotoPersonali() {
+        Map<String, byte[]> out = new HashMap<>();
+        try {
+            String[] nomi = getAssets().list("foto");
+            if (nomi != null) for (String n : nomi) {
+                try { out.put(n, leggiAssetByte("foto/" + n)); } catch (Exception ignored) { }
+            }
+        } catch (Exception ignored) { }
+        return out;
     }
 
     private String leggiAsset(String nome) {

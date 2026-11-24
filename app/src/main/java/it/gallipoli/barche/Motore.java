@@ -128,6 +128,28 @@ public class Motore {
     private String aggiornato = null, errore = null;
     private String modoMt = "python";
 
+    // ------------------------------------------------------------------ FOTO PERSONALI
+    // Foto messe nell'APK (cartella assets/foto). Il nome del file e' l'MMSI scritto al contrario:
+    // MMSI 247389470 -> 074983742.jpg. Se c'e', la foto personale ha sempre la precedenza.
+    private final Map<Long, byte[]> fotoPersonali = new HashMap<>();
+    private final Map<Long, Double> arPersonali = new HashMap<>();
+
+    /** Da chiamare all'avvio con i file della cartella assets/foto: nome file -> contenuto. */
+    public void caricaFotoPersonali(Map<String, byte[]> file) {
+        for (Map.Entry<String, byte[]> e : file.entrySet()) {
+            String nome = e.getKey();
+            int punto = nome.lastIndexOf('.');
+            String base = (punto > 0 ? nome.substring(0, punto) : nome).trim();
+            if (!base.matches("\\d{9}")) { log("Foto personale ignorata (il nome deve essere l'MMSI al contrario, 9 cifre): " + nome); continue; }
+            long mmsi = Long.parseLong(new StringBuilder(base).reverse().toString());
+            int[] dim = dimensioniImg(e.getValue());
+            if (dim == null || dim[1] == 0) { log("Foto personale ignorata (non e' un JPG/PNG/WEBP valido): " + nome); continue; }
+            fotoPersonali.put(mmsi, e.getValue());
+            arPersonali.put(mmsi, (double) dim[0] / dim[1]);
+            log("Foto personale: " + nome + " -> MMSI " + mmsi);
+        }
+    }
+
     public Motore(File cacheBase, BrowserMT browserMT) {
         this.cacheDir = new File(cacheBase, "barche");
         this.fotoDir = new File(cacheDir, "foto");
@@ -552,7 +574,13 @@ public class Motore {
     }
 
     /** Foto nella qualita' migliore (per la vista ingrandita), in cache. {byte[], content-type} o null. */
+    private Object[] fotoPersonale(String chiave) {
+        byte[] d = fotoPersonali.get(Long.parseLong(chiave.substring(1)));
+        return d == null ? null : new Object[]{d, tipoImg(d)};
+    }
+
     Object[] fotoGrande(String chiave) {
+        if (chiave.matches("p\\d+")) return fotoPersonale(chiave);
         File dest = new File(fotoDir, chiave + "_grande.img");
         try {
             if (dest.isFile()) {
@@ -603,6 +631,7 @@ public class Motore {
 
     /** Foto piccola gia' in cache: {byte[], content-type} o null. */
     Object[] foto(String chiave) {
+        if (chiave.matches("p\\d+")) return fotoPersonale(chiave);
         if (!chiave.matches("(mt)?\\d+")) return null;
         File f = new File(fotoDir, chiave + ".img");
         if (!f.isFile()) return null;
@@ -913,7 +942,10 @@ public class Motore {
                     if (tipo.isEmpty() || tipo.equals("null") || tipo.equals("Unknown")) tipo = tipoMt(r);
                     String fotoKey = null;
                     double ar = Double.NaN;
-                    if (sc.has("foto") && !Double.isNaN(sc.optDouble("foto", Double.NaN))) {
+                    if (fotoPersonali.containsKey(m)) {
+                        fotoKey = "p" + m;
+                        ar = arPersonali.get(m);
+                    } else if (sc.has("foto") && !Double.isNaN(sc.optDouble("foto", Double.NaN))) {
                         fotoKey = String.valueOf(m);
                         ar = sc.getDouble("foto");
                     } else if (r != null) {
@@ -1124,6 +1156,7 @@ public class Motore {
                 righe.add("VF " + m + " " + nome
                         + " | misure VF: " + fmt(num(sc.opt("len"))) + "x" + fmt(num(sc.opt("wid")))
                         + " | foto VF: " + (sc.has("foto") ? "si" : "no")
+                        + (fotoPersonali.containsKey(m) ? " | FOTO PERSONALE" : "")
                         + " | MT: " + (r == null ? "non abbinata"
                         : sid + " " + r.optString("name", "?") + " misure " + fmt(num(r.opt("len"))) + "x" + fmt(num(r.opt("wid")))
                         + " foto " + (fm == null ? "mai cercata" : Double.isNaN(fm[1]) ? "non trovata" : "si"))
