@@ -280,6 +280,7 @@ async function refresh() {
     const normN = n => String(n || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const presenti = new Set(vessels.map(v => normN(v.name)));
     arrivi = (d.arrivi || []).filter(a => !presenti.has(normN(a.name)));
+    coloraArrivi();
     st.className = d.error ? 'err' : '';
     st.textContent = d.error ? ('Errore: ' + d.error)
                              : (vessels.length + ' barche (' + vessels.filter(v => v.age > SBIADISCI).length + ' non aggiornate da oltre ' + quando(SBIADISCI) + ') - aggiornato ' + (d.updated || '...'));
@@ -665,6 +666,25 @@ function incrocio(a, b, c, d) {
   return (o(a, b, c) * o(a, b, d) < 0) && (o(c, d, a) * o(c, d, b) < 0);
 }
 // ---------- barche in arrivo ----------
+// ogni barca in arrivo ha un colore tutto suo, molto diverso dagli altri, e lo tiene finche' resta
+// in arrivo: lo stesso colore per la freccia sul bordo e per il pallino nel riquadro "In arrivo"
+const COLORI_ARRIVI = ['#e6194b', '#1f5bff', '#ff8c00', '#18a84a', '#9b1fd1', '#ff2fd2',
+                       '#00c8e0', '#ffd400', '#8b4513', '#111111', '#9ad400', '#000080'];
+const coloreArrivo = {};                        // nome -> indice del colore
+function coloraArrivi() {
+  const nomi = arrivi.map(a => String(a.name || '?'));
+  for (const n of Object.keys(coloreArrivo)) if (!nomi.includes(n)) delete coloreArrivo[n];   // colori liberi
+  for (const a of arrivi) {
+    const n = String(a.name || '?');
+    if (!(n in coloreArrivo)) {
+      const usati = new Set(Object.values(coloreArrivo));
+      let i = 0;
+      while (usati.has(i) && i < COLORI_ARRIVI.length - 1) i++;
+      coloreArrivo[n] = i;
+    }
+    a.color = COLORI_ARRIVI[coloreArrivo[n]];
+  }
+}
 function tempo(min) {
   if (min < 1) return 'ora';
   if (min < 60) return 'tra ' + Math.round(min) + ' min';
@@ -714,36 +734,28 @@ function disegnaArrivi(punti, W, H) {
   box.style.top = r.y + 'px';
 }
 
-// freccia sul bordo della mappa nel punto in cui la barca entrera'
+// freccia sul bordo della mappa nel punto in cui la barca entrera' (senza scritta: il colore la collega
+// alla riga del riquadro "In arrivo"). Sta sempre all'altezza giusta: se proprio cade dentro un pannello
+// si sposta di lato, mai su o giu', cosi' indica sempre da dove arrivera' la barca.
 function frecceArrivi() {
   const fr = document.getElementById('frecce');
   fr.innerHTML = '';
-  const W = innerWidth, H = innerHeight, M = 16;
+  const W = innerWidth, H = innerHeight, M = 12, R = 11;            // margine dal bordo, "raggio" della freccia
   const pannelli = ['scala', 'arrivi'].map(id => document.getElementById(id))
     .filter(e => e && getComputedStyle(e).display !== 'none').map(e => e.getBoundingClientRect());
   for (const a of arrivi) {
     const p = map.latLngToContainerPoint([a.ing_lat, a.ing_lon]);
     let x = Math.min(Math.max(p.x, M), W - M), y = Math.min(Math.max(p.y, M), H - M);
-    const sinistra = x < W / 2;
-    const testo = esc(a.name) + ' · ' + tempo(a.eta);
-    const lw = testo.length * 7 + 20;                         // larghezza stimata etichetta
-    // se freccia o etichetta finiscono dietro un pannello, scorro lungo il bordo
     for (const r of pannelli) {
-      const ex = sinistra ? x - 10 : x - lw, ew = lw + 10;
-      if (ex < r.right + 6 && ex + ew > r.left - 6 && y > r.top - 14 && y < r.bottom + 14) {
-        if (x <= M + 1 || x >= W - M - 1) y = (y - r.top < r.bottom - y) ? r.top - 16 : r.bottom + 16;
-        else x = (x - r.left < r.right - x) ? r.left - 16 : r.right + 16;
+      if (x + R > r.left && x - R < r.right && y + R > r.top && y - R < r.bottom) {
+        if (y <= M + 1 || y >= H - M - 1) x = (x - r.left < r.right - x) ? r.left - R - 4 : r.right + R + 4;   // bordo alto/basso
+        else x = (x - r.left < r.right - x) ? Math.max(M, r.left - R - 4) : r.right + R + 4;                    // bordo sinistro/destro
       }
     }
     const g = 'translate(' + x + ',' + y + ') rotate(' + a.course + ')';
     fr.insertAdjacentHTML('beforeend',
       '<g transform="' + g + '"><path d="M0,-11 L8,7 L0,3 L-8,7 Z" fill="' + a.color +
       '" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></g>');
-    const dx = sinistra ? 14 : -14, ancora = sinistra ? 'start' : 'end';
-    const dy = y < 40 ? 22 : (y > H - 40 ? -16 : 4);
-    fr.insertAdjacentHTML('beforeend',
-      '<text x="' + (x + dx) + '" y="' + (y + dy) + '" text-anchor="' + ancora + '" font-size="12" font-weight="700"' +
-      ' fill="#123" stroke="#fff" stroke-width="3.5" paint-order="stroke">' + testo + '</text>');
   }
 }
 
