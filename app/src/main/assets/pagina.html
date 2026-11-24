@@ -362,6 +362,7 @@ const SAGOME = {
   },
   yacht: {              // 15-24 m: coupe' (proporzioni prese dal modello dell'utente)
     top: -19.5, bottom: 0.6,
+    sotto: [P([[23.7, -9.0], [25.4, -13.8], [71.2, -13.8], [77, -9.0]])], // fondo bianco solo dietro le vetrate (il pozzetto resta aperto)
     d: [P([[2.4, 0.6], [0, -2.4], [0, -3.9], [4.7, -3.9], [6.1, -9.3], [100, -9.3], [97.3, -3.8], [96.3, 0.6]]),  // scafo
         P([[7.5, -13.7], [71.2, -13.7], [74.6, -12.5], [7.5, -12.5]]),   // tetto lungo del ponte principale
         RET(8.5, -12.6, 0.8, 3.4),                                       // montante del pozzetto
@@ -507,6 +508,7 @@ function svgSagoma(nome, w, colore) {
   return {
     h,
     svg: `<svg width="${w}" height="${h}" viewBox="0 ${s.top} 100 ${s.bottom - s.top}" shape-rendering="geometricPrecision">` +
+         (s.sotto || []).map(d => p(d, '#fff')).join('') +
          s.d.map(d => p(d, colore)).join('') + s.bianco.map(d => p(d, '#fff')).join('') + '</svg>',
   };
 }
