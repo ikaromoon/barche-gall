@@ -274,6 +274,9 @@ async function refresh() {
   try {
     const d = await (await fetch('/api/vessels')).json();
     vessels = d.vessels;
+    // "M/P" (motopeschereccio) davanti al nome, maiuscolo o minuscolo: e' sempre un peschereccio,
+    // anche se l'AIS non lo dice -> sagoma e colore da pesca
+    for (const v of vessels) if (/^\s*m\s*\/\s*p\b/i.test(v.name || '')) { v.type = 'Fishing'; v.color = '#f08a24'; }
     aggiornaOrdine();
     // una barca gia' sulla mappa non e' piu' "in arrivo", anche se l'ultima lettura di MarineTraffic
     // (ogni 3 minuti) la vedeva ancora fuori: niente freccia doppia
