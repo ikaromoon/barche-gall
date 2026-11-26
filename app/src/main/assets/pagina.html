@@ -2,6 +2,11 @@
 <html lang="it"><head><meta charset="utf-8"><title>Gallipoli - barche</title>
 <link rel="stylesheet" href="leaflet.css">
 <script src="leaflet.js"></script>
+<script>
+  // aperta da sola nel browser senza leaflet.js accanto: la libreria della mappa si prende da internet
+  if (!window.L) document.write('<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">' +
+                                '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>');
+</script>
 <style>
   :root { --s: 1.0; }
   html, body { margin:0; height:100%; overflow:hidden; background:#aad3df;
@@ -88,6 +93,9 @@
   .bubble.gruppo .gr span { color:#567; font-weight:500; margin-left:.4em; }
   .bubble.gruppo .gr.vecchia { opacity:.45; }
   .bubble.gruppo .gr.sel { background:rgba(255,212,0,.55); }
+  .bubble.gruppo.confoto { display:flex; align-items:stretch; }
+  .bubble.gruppo .gf { width:calc(120px*var(--s)); min-height:100%; object-fit:cover; display:block; background:#e9eef3; flex:none; }
+  .bubble.gruppo .gc { display:flex; flex-direction:column; justify-content:center; }
   .bubble.cliccabile { pointer-events:auto; cursor:zoom-in; }
   #intera { position:absolute; left:10px; top:10px; z-index:2000; height:26px; padding:0 14px;
             border-radius:13px; background:#0d3b66; color:#fff; font:600 14px/26px "Segoe UI", Roboto, Arial, sans-serif;
@@ -113,11 +121,13 @@
 <div id="arrivi"></div>
 <div id="zoom"><div class="box"><button class="x" title="Chiudi">&#x2715;</button><img alt=""><div class="info"></div></div></div>
 <script>
-const BOUNDS = %%BOUNDS%%;
+// l'app sostituisce il segnaposto con l'area vera; aperta da sola nel browser usa l'area standard
+const BOUNDS = JSON.parse('%%BOUNDS%%'.charAt(0) === '[' ? '%%BOUNDS%%' : '[[39.9942,17.8501],[40.0694,18.0247]]');
 const DOT = 7;
 const SBIADISCI = 120;
 const GAP = 10;
 const RADII = [28, 55, 90, 135, 190, 255, 330, 420, 520, 640];
+const LINK_MIN = DOT + 22;        // pixel minimi di linea visibile tra pallino e fumetto
 const ANGLES = [-45,-135,45,135,-90,90,0,180,-22.5,-67.5,-112.5,-157.5,22.5,67.5,112.5,157.5]
                .map(d => d * Math.PI / 180);
 
@@ -140,7 +150,10 @@ function usaSfondo(i) {
     if (++erroriSfondo >= 4 && nSfondo < SFONDI.length - 1) usaSfondo(++nSfondo);
   });
 }
-usaSfondo(0);
+// in modalita' prova (pagina aperta dal PC) niente mappa di sfondo: i server delle mappe rifiutano
+// le pagine aperte come file ("accesso bloccato"), quindi solo mare blu
+if (location.protocol === 'file:' || /[?&]prova/.test(location.search)) document.getElementById('map').style.background = '#aad3df';
+else usaSfondo(0);
 let vistaIniziale = null;
 function fit() {
   map.fitBounds(BOUNDS, {padding:[0,0], animate:false});
@@ -171,6 +184,61 @@ const svg = document.getElementById('lines');
 let vessels = [];
 let arrivi = [];
 
+
+// ---------- MODALITA' PROVA ----------
+// Aprendo pagina.html direttamente nel browser del PC (doppio clic sul file, oppure con ?prova)
+// la pagina usa barche di esempio e la tastiera fa da telecomando:
+//   frecce = frecce, Invio = OK, Esc/Backspace = Indietro, Spazio = Play/Pausa,
+//   + e - = zoom, M = Menu (pannello), D = sposta una barca (simula una barca in movimento)
+const PROVA = location.protocol === 'file:' || /[?&]prova/.test(location.search);
+function fotoFinta(colore, scritta) {
+  const svgF = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="#8fc3ea"/><stop offset="0.62" stop-color="#f3d9a8"/><stop offset="0.62" stop-color="#2a5b84"/>' +
+    '<stop offset="1" stop-color="#173b5c"/></linearGradient></defs><rect width="300" height="200" fill="url(#g)"/>' +
+    '<path d="M70 120 L230 120 L215 140 L85 140 Z" fill="' + colore + '"/><rect x="110" y="98" width="70" height="22" fill="#fff"/>' +
+    '<text x="150" y="40" font-family="Arial" font-size="22" font-weight="bold" text-anchor="middle" fill="#123">' + scritta + '</text></svg>';
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgF);
+}
+const FOTO_PROVA = {};
+function urlFoto(k, grande) {
+  if (!PROVA) return (grande ? '/foto_grande/' : '/photo/') + k;
+  return FOTO_PROVA[k] || fotoFinta('#888', k);
+}
+let spostamentoProva = 0;
+function datiProva() {
+  const B = (mmsi, name, lat, lon, len, wid, type, color, foto, age) => {
+    if (foto) FOTO_PROVA[foto] = fotoFinta(color, name);
+    return {mmsi, name, lat, lon, len, wid, size: len ? len + ' / ' + wid + ' m' : null, type, color,
+            photo: foto, ar: 1.5, age: age || 0, src: 'VF'};
+  };
+  const vessels = [
+    B('247389470', 'MARILENA_R', 40.05717, 17.98263, 22, 6, 'Pleasure craft', '#c43bd6', 'mt9686686'),
+    B('247285820', 'BALOO I', 40.05714, 17.98279, 22, 6, 'Pleasure craft', '#c43bd6', 'p247285820'),
+    B('247286090', 'DENEBOLA 1', 40.05780, 17.98289, 11, 4, 'Sailing vessel', '#c43bd6', null),
+    B('228176460', 'MAKTUB 2', 40.05809, 17.98423, 12, 4, 'Sailing vessel', '#c43bd6', '228176460'),
+    B('247414800', 'GC B124', 40.05745, 17.98200, 8, 3, 'Law enforcement', '#1fb3c4', 'p247414800'),
+    B('247522050', 'KASIMIR', 40.06683, 18.00157, 15, 5, 'Pleasure craft', '#c43bd6', null, 200),
+    B('247241210', 'TIME OUT', 40.06672, 18.00154, null, null, 'Pleasure craft', '#c43bd6', null),
+    B('247999001', 'FRIENDS', 40.06660, 18.00130, 10, 3, 'Sailing vessel', '#c43bd6', null),
+    B('247281390', 'NUOVA SAN MICHELE', 40.0560 + spostamentoProva * 0.002, 17.9710, 18, 5, 'Fishing', '#f08a24', '247281390'),
+    B('247120020', 'M/P ANNA MARIA', 40.0300, 17.9050, 16, 4, '', '#c43bd6', null, 32),
+    B('247120030', 'M/P BARABBA', 40.0080, 17.8900, 16, 4, '', '#c43bd6', null, 34),
+  ];
+  const arrivi = [
+    {name: 'SAVERIO PADRE', eta: 47, dist: 4.1, speed: 5.2, course: 120, len: 14, color: '#f08a24', ing_lat: 40.045, ing_lon: 17.8501},
+    {name: 'LEVANTE', eta: 95, dist: 7.9, speed: 5, course: 340, len: 12, color: '#c43bd6', ing_lat: 39.9942, ing_lon: 17.95},
+  ];
+  return {updated: 'prova', error: null, vessels, arrivi};
+}
+if (PROVA) {
+  window.addEventListener('keydown', e => {
+    const m = {ArrowUp: 'su', ArrowDown: 'giu', ArrowLeft: 'sx', ArrowRight: 'dx', Enter: 'ok', ' ': 'play',
+               '+': 'piu', '-': 'meno', m: 'pannello', M: 'pannello'}[e.key];
+    if (m) { e.preventDefault(); tasto(m); }
+    else if (e.key === 'Backspace' || e.key === 'Escape') { e.preventDefault(); indietro(); }
+    else if (e.key === 'd' || e.key === 'D') { spostamentoProva++; refresh(); }
+  });
+}
 
 // ---------- zone raggruppate (porti) ----------
 // Le barche ferme dentro una zona si riuniscono in un solo fumetto con l'elenco, se sono almeno 2.
@@ -228,8 +296,12 @@ function fumettoGruppo(g) {
   const righe = g.membri.map(v =>
     '<div class="gr' + (v.age > SBIADISCI ? ' vecchia' : '') + (v.mmsi === sel ? ' sel' : '') + '"><i style="background:' + v.color + '"></i>' +
     esc(v.name) + '<span>' + (v.len ? fmtM(v.len) + ' m' : '-') + '</span></div>').join('');
-  el.innerHTML = '<div class="gt">' + esc(g.z.nome) + '<span class="gn">' + g.membri.length + '</span></div>' +
-                 '<div class="gl' + (g.membri.length >= 4 ? ' due' : '') + '">' + righe + '</div>';
+  // mentre si scorre l'elenco, la barca evidenziata mostra la sua foto (se ce l'ha)
+  const evid = g.membri.find(v => v.mmsi === sel);
+  const foto = evid && evid.photo ? '<img class="gf" src="' + urlFoto(evid.photo) + '">' : '';
+  if (foto) el.classList.add('confoto');
+  el.innerHTML = foto + '<div class="gc"><div class="gt">' + esc(g.z.nome) + '<span class="gn">' + g.membri.length + '</span></div>' +
+                 '<div class="gl' + (g.membri.length >= 4 ? ' due' : '') + '">' + righe + '</div></div>';
   if (g.membri.some(v => v.mmsi === sel)) el.classList.add('sel');
   el.addEventListener('click', () => zoomGruppo(g));
   return el;
@@ -332,10 +404,10 @@ const zoom = document.getElementById('zoom');
 function apriFoto(v) {
   const img = zoom.querySelector('img');
   img.style.setProperty('--ar', v.ar || 1.5);          // proporzioni della foto: riempie il riquadro
-  img.src = '/photo/' + v.photo;                       // subito quella piccola gia' in cache...
+  img.src = urlFoto(v.photo);                       // subito quella piccola gia' in cache...
   const grande = new Image();
   grande.onload = () => { if (zoom.dataset.k === v.photo) img.src = grande.src; };   // ...poi la grande
-  grande.src = '/foto_grande/' + v.photo;
+  grande.src = urlFoto(v.photo, true);
   zoom.dataset.k = v.photo;
   const cl = v.age <= 15 ? 'fresca' : v.age <= SBIADISCI ? 'media' : 'vecchia';
   zoom.querySelector('.info').innerHTML = '<b>' + esc(v.name) + '</b><span>Size: <b>' + esc(v.size || '-') +
@@ -344,7 +416,7 @@ function apriFoto(v) {
 }
 function chiudiFoto() { zoom.classList.remove('aperto'); zoom.dataset.k = ''; }
 zoom.addEventListener('click', e => { if (!e.target.closest('.box') || e.target.closest('.x')) chiudiFoto(); });
-window.addEventListener('keydown', e => { if (e.key === 'Escape') chiudiFoto(); });
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && !PROVA) chiudiFoto(); });
 
 function quando(min) { return min < 60 ? min + ' min' : min < 2880 ? Math.round(min / 60) + ' h' : Math.round(min / 1440) + ' giorni'; }
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -352,7 +424,8 @@ function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&l
 async function refresh() {
   const st = document.getElementById('stato');
   try {
-    const d = await (await fetch('/api/vessels')).json();
+    // in prova i dati arrivano "dopo", come dal server (cosi' la pagina e' gia' tutta caricata)
+    const d = PROVA ? await new Promise(ok => setTimeout(() => ok(datiProva()), 0)) : await (await fetch('/api/vessels')).json();
     vessels = d.vessels;
     // "M/P" (motopeschereccio) davanti al nome, maiuscolo o minuscolo: e' sempre un peschereccio,
     // anche se l'AIS non lo dice -> sagoma e colore da pesca
@@ -402,7 +475,7 @@ function render() {
     el.style.setProperty('--c', v.color);
     const ar = Math.max(0.75, Math.min(2.0, v.ar || 1.5));           // proporzione della foto
     const hFoto = 190 * 1.0 * K / ar;
-    el.innerHTML = (v.photo ? '<img style="height:' + hFoto + 'px" src="/photo/' + v.photo + '">' : '') +
+    el.innerHTML = (v.photo ? '<img style="height:' + hFoto + 'px" src="' + urlFoto(v.photo) + '">' : '') +
       '<div class="tx"><div class="nm">' + esc(v.name) + '</div>' +
       '<div class="sz">Size: <b>' + esc(v.size || '-') + '</b></div>' +
       '<div class="eta ' + (v.age <= 15 ? 'fresca' : v.age <= SBIADISCI ? 'media' : 'vecchia') + '">ultima rilevazione: ' +
@@ -745,19 +818,22 @@ function place(items, W, H) {
   const cerca = (it, raggi) => {
     let best = null, bestScore = Infinity;
     for (const r0 of raggi) {
-      const r = r0 * K + (it.r || 0);                // i gruppi partono dal bordo del loro cerchio
+      const r = Math.max(r0 * K, LINK_MIN) + (it.r || 0);   // i gruppi partono dal bordo del loro cerchio
       for (const a of ANGLES) {
         const dx = Math.cos(a), dy = Math.sin(a);
         const cx = it.p.x + dx * (r + it.w / 2), cy = it.p.y + dy * (r + it.h / 2);
         const rc = {x: cx - it.w / 2, y: cy - it.h / 2, w: it.w, h: it.h};
         if (rc.x < M || rc.y < M || rc.x + rc.w > W - M || rc.y + rc.h > H - M) continue;
         if (vietate.some(v => overlap(rc, v, 0) > 0)) continue;              // vietato: si scarta
+        if (dotRects.some(d => !(it.gruppo && d.it === it) && overlap(rc, d, 8) > 0)) continue;   // mai sopra un pallino
         const fine = nearest(it.p, rc);
+        // linea visibile di almeno LINK_MIN - DOT pixel anche quando il fumetto e' in diagonale
+        if (Math.hypot(fine.x - it.p.x, fine.y - it.p.y) < (it.r || DOT) + LINK_MIN - DOT) continue;
         // linea sotto un pannello (non vale per il pannello sotto cui si trova la barca stessa)
         if (vietate.some(v => !dentro(it.p, v, 0) && segHitsRect(it.p, fine, v))) continue;
         let ov = 0, cross = 0;
         for (const q of placed) { ov += overlap(rc, q.rc, GAP); if (segHitsRect(it.p, fine, q.rc)) cross++; }
-        for (const d of dotRects) if (d.it !== it) ov += overlap(rc, d, 2);
+        for (const d of dotRects) if (!(it.gruppo && d.it === it)) ov += overlap(rc, d, 8);   // margine attorno ai pallini
         for (const q of placed) if (segHitsRect(q.p, nearest(q.p, q.rc), rc)) cross++;
         const score = ov * 50 + cross * 60 + r;
         if (ov === 0 && cross <= 1) return {rc, libero: true};
