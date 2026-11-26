@@ -224,6 +224,23 @@ function datiProva() {
     B('247281390', 'NUOVA SAN MICHELE', 40.0560 + spostamentoProva * 0.002, 17.9710, 18, 5, 'Fishing', '#f08a24', '247281390'),
     B('247120020', 'M/P ANNA MARIA', 40.0300, 17.9050, 16, 4, '', '#c43bd6', null, 32),
     B('247120030', 'M/P BARABBA', 40.0080, 17.8900, 16, 4, '', '#c43bd6', null, 34),
+    // all'ancora vicino all'isola di Sant'Andrea (entro ~150 m): diventano una zona
+    B('247500001', 'AZZURRA', 40.0452, 17.9468, 14, 4, 'Sailing vessel', '#c43bd6', '247500001'),
+    B('247500002', 'LIBERA', 40.0460, 17.9480, 9, 3, 'Sailing vessel', '#c43bd6', null),
+    B('247500003', 'SOLE MIO', 40.0445, 17.9482, 18, 5, 'Pleasure craft', '#c43bd6', '247500003'),
+    B('247500004', 'GIULIA', 40.0466, 17.9462, 12, 4, 'Pleasure craft', '#c43bd6', null),
+    // tre barche davanti a Baia Verde (entro ~120 m): un'altra zona
+    B('247500005', 'TRAMONTANA', 40.0330, 17.9905, 16, 4, 'Pleasure craft', '#c43bd6', '247500005'),
+    B('247500006', 'NINFA', 40.0337, 17.9915, 11, 3, 'Sailing vessel', '#c43bd6', null),
+    B('247500007', 'PERLA', 40.0326, 17.9918, 8, 3, 'Pleasure craft', '#c43bd6', null),
+    // due barche a ~280 m: con 200 m restano separate
+    B('247500008', 'ONDA', 40.0150, 17.9500, 10, 3, 'Pleasure craft', '#c43bd6', null),
+    B('247500009', 'SCIABICA', 40.0150, 17.9533, 13, 4, 'Fishing', '#f08a24', null),
+    // fila di 6 barche a 250 m l'una dall'altra (1,25 km in tutto): col tetto di 850 m diventa due zone
+    ...[0, 1, 2, 3, 4, 5].map(i => B('24760000' + i, 'FILA ' + (i + 1), 40.0240, 17.9000 + i * 0.00293, 10, 3, 'Sailing vessel', '#c43bd6', null)),
+    // isolate
+    B('247500010', 'ESTATE', 40.0600, 17.9300, 15, 4, 'Sailing vessel', '#c43bd6', '247500010'),
+    B('247500011', 'MAESTRALE', 40.0050, 17.9750, 20, 5, 'Pleasure craft', '#c43bd6', null),
   ];
   const arrivi = [
     {name: 'SAVERIO PADRE', eta: 47, dist: 4.1, speed: 5.2, course: 120, len: 14, color: '#f08a24', ing_lat: 40.045, ing_lon: 17.8501},
@@ -232,12 +249,18 @@ function datiProva() {
   return {updated: 'prova', error: null, vessels, arrivi};
 }
 if (PROVA) {
+  L.control.scale({metric: true, imperial: false, position: 'bottomright', maxWidth: 200}).addTo(map);   // per capire quanto sono 200 m
   window.addEventListener('keydown', e => {
     const m = {ArrowUp: 'su', ArrowDown: 'giu', ArrowLeft: 'sx', ArrowRight: 'dx', Enter: 'ok', ' ': 'play',
                '+': 'piu', '-': 'meno', m: 'pannello', M: 'pannello'}[e.key];
     if (m) { e.preventDefault(); tasto(m); }
     else if (e.key === 'Backspace' || e.key === 'Escape') { e.preventDefault(); indietro(); }
     else if (e.key === 'd' || e.key === 'D') { spostamentoProva++; refresh(); }
+    else if (/^[1-5]$/.test(e.key)) {                     // 1..5 = distanza dei gruppi 100..500 m
+      DIST_GRUPPO = +e.key * 100;
+      document.getElementById('stato').textContent = 'Prova: gruppi automatici entro ' + DIST_GRUPPO + ' m (tasti 1-5)';
+      render();
+    }
   });
 }
 
@@ -249,6 +272,8 @@ const ZONE = [
   {nome: 'Porto di Gallipoli', lat: 40.0575, lon: 17.9830, raggio: 350},
   {nome: 'Porto turistico',    lat: 40.0668, lon: 18.0016, raggio: 300},
 ];
+const DIAM_MAX = 850;                // tetto: due barche della stessa zona non possono distare piu' di 850 m
+let DIST_GRUPPO = 300;               // fuori dai porti: barche ferme a meno di 300 m tra loro = "Zona A", "Zona B"...
 const ZOOM_SCIOGLI = 0.8;            // quanto zoom oltre la vista d'insieme serve per sciogliere i gruppi
 const MOVIMENTO_M = 80;              // spostata di piu' di 80 m negli ultimi 10 minuti = in movimento
 const COLORE_GRUPPO = '#0d3b66';
@@ -283,6 +308,26 @@ function calcolaGruppi() {
     membri.forEach(v => presi.add(v.mmsi));
     gruppi.push({z, membri});
   }
+  // gruppi automatici: barche ferme vicine tra loro (catena: A vicina a B, B vicina a C -> stesso gruppo)
+  const libere = vessels.filter(v => !presi.has(v.mmsi) && !inMovimento(v))
+                        .sort((a, b) => a.lon - b.lon || a.lat - b.lat);     // sempre lo stesso ordine (da ovest)
+  const visto = new Set(), auto = [];
+  for (const v of libere) {
+    if (visto.has(v.mmsi)) continue;
+    const membri = [v]; visto.add(v.mmsi);
+    for (let i = 0; i < membri.length; i++)
+      for (const w of libere)
+        if (!visto.has(w.mmsi) && distM(membri[i], w) <= DIST_GRUPPO &&
+            membri.every(m => distM(m, w) <= DIAM_MAX)) { visto.add(w.mmsi); membri.push(w); }   // oltre 850 m: zona nuova
+    if (membri.length >= 2) auto.push(membri);
+  }
+  // lettere in ordine da ovest a est, cosi' una zona tiene la sua lettera tra un aggiornamento e l'altro
+  const centro = m => ({lat: m.reduce((t, v) => t + v.lat, 0) / m.length, lon: m.reduce((t, v) => t + v.lon, 0) / m.length});
+  auto.sort((a, b) => centro(a).lon - centro(b).lon);
+  auto.forEach((membri, i) => {
+    membri.sort((a, b) => ((b.len > 0) - (a.len > 0)) || (b.len || 0) - (a.len || 0) || String(a.name).localeCompare(String(b.name)));
+    gruppi.push({z: {nome: 'Zona ' + String.fromCharCode(65 + i % 26), ...centro(membri)}, membri});
+  });
   return gruppi;
 }
 function gruppoDi(mmsi) { return gruppiAttuali.find(g => g.membri.some(v => v.mmsi === mmsi)); }
