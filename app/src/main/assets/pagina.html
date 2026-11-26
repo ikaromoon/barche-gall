@@ -101,8 +101,9 @@
             border-radius:13px; background:#0d3b66; color:#fff; font:600 14px/26px "Segoe UI", Roboto, Arial, sans-serif;
             box-shadow:0 2px 8px rgba(0,0,0,.35); display:none; }
   #intera.visibile { display:block; }
-  #aiuto { position:absolute; right:10px; top:10px; z-index:2000; background:rgba(13,59,102,.88); color:#fff;
-           padding:4px 10px; border-radius:8px; font:600 10.5px "Segoe UI", Roboto, Arial, sans-serif;
+  #aiuto { position:absolute; left:50%; transform:translateX(-50%); top:10px; z-index:2000; white-space:nowrap;
+           background:rgba(13,59,102,.55); color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.5);   /* in alto al centro, semitrasparente */
+           padding:3px 9px; border-radius:8px; font:600 9.5px "Segoe UI", Roboto, Arial, sans-serif;
            transition:opacity .6s, visibility .6s; }
   #aiuto.nascosto { opacity:0; visibility:hidden; }
   .bubble.sel { outline:calc(4px*var(--s)) solid #ffd400; outline-offset:calc(2px*var(--s));
@@ -116,7 +117,7 @@
 <div id="labels"></div>
 <div id="stato">caricamento...</div>
 <div id="intera">&#x2B05; Indietro: mappa intera</div>
-<div id="aiuto">&#x25B2;&#x25BC; barca prec./succ. &nbsp;&middot;&nbsp; &#x25C0;&#x25B6; barca a sx/dx &nbsp;&middot;&nbsp; OK foto &nbsp;&middot;&nbsp; &#x25B6;&#x275A;&#x275A; zoom sulla barca &nbsp;&middot;&nbsp; &#x23EA;&#x23E9; zoom &nbsp;&middot;&nbsp; Menu pannello &nbsp;&middot;&nbsp; Indietro esci</div>
+<div id="aiuto">&#x25B2;&#x25BC; barca &middot; &#x25C0;&#x25B6; vicina &middot; OK foto &middot; &#x25B6;&#x275A;&#x275A; zoom barca &middot; &#x23EA;&#x23E9; zoom &middot; &#x2630; pannello &middot; &#x21A9; esci</div>
 <div id="scala"></div>
 <div id="arrivi"></div>
 <div id="zoom"><div class="box"><button class="x" title="Chiudi">&#x2715;</button><img alt=""><div class="info"></div></div></div>
@@ -798,6 +799,7 @@ function segHitsRect(p, q, r) {          // il segmento p-q attraversa il rettan
   return false;
 }
 
+let ultimaDisposizione = {chiave: '', rc: {}};
 function place(items, W, H) {
   const M = 6;
   const dotRects = items.map(it => it.gruppo
@@ -812,9 +814,31 @@ function place(items, W, H) {
   }
   for (const it of items)
     it.n = items.filter(o => Math.hypot(o.p.x - it.p.x, o.p.y - it.p.y) < 300).length;
-  const conSel = it => it.gruppo ? it.gruppo.membri.some(v => v.mmsi === sel) : it.v.mmsi === sel;
-  items.sort((a, b) => conSel(b) - conSel(a) || (!!b.gruppo - !!a.gruppo) || b.n - a.n || a.p.y - b.p.y);     // prima la selezionata, poi i gruppi e le zone affollate
+  // ordine fisso (prima i gruppi, poi le zone affollate): NON dipende dalla barca selezionata,
+  // cosi' cambiando selezione i fumetti restano dove sono
+  items.sort((a, b) => (!!b.gruppo - !!a.gruppo) || b.n - a.n || a.p.y - b.p.y || String(a.v.mmsi).localeCompare(String(b.v.mmsi)));
   const placed = [];
+  const chiave = [W, H, map.getZoom().toFixed(4), map.getCenter().lat.toFixed(6), map.getCenter().lng.toFixed(6),
+                  JSON.stringify(vietate.map(v => [Math.round(v.x), Math.round(v.y), Math.round(v.w), Math.round(v.h)])),
+                  items.map(it => it.v.mmsi + '@' + Math.round(it.p.x) + ',' + Math.round(it.p.y) +
+                                  (it.gruppo ? ':' + it.gruppo.membri.map(v => v.mmsi).join('+') : '')).sort().join('|')].join('#');
+  if (chiave === ultimaDisposizione.chiave && items.every(it => ultimaDisposizione.rc[it.v.mmsi])) {
+    for (const it of items) {
+      const c = ultimaDisposizione.rc[it.v.mmsi];
+      if (c.compatto) { const img = it.el.querySelector('img'); if (img) img.remove(); it.el.classList.add('compatto'); }
+      const w = it.el.offsetWidth, h = it.el.offsetHeight;
+      // se il fumetto cambia misura (es. il gruppo mostra la foto) resta attaccato dal lato verso il suo pallino
+      const x = (c.x + c.w / 2 < it.p.x) ? c.x + c.w - w : c.x;
+      const y = (c.y + c.h / 2 < it.p.y) ? c.y + c.h - h : c.y;
+      const rc = {x, y, w, h};
+      placed.push({p: it.p, rc, it});
+      it.el.style.left = rc.x + 'px';
+      it.el.style.top = rc.y + 'px';
+    }
+    dotRects.push(...vietate.map(v => ({...v, vietata: true})));
+    disegnaLinee(placed, dotRects);
+    return;
+  }
   const cerca = (it, raggi) => {
     let best = null, bestScore = Infinity;
     for (const r0 of raggi) {
@@ -863,6 +887,9 @@ function place(items, W, H) {
     it.el.style.left = best.x + 'px';
     it.el.style.top = best.y + 'px';
   }
+  ultimaDisposizione = {chiave, rc: {}};
+  for (const pl of placed)
+    ultimaDisposizione.rc[pl.it.v.mmsi] = {...pl.rc, compatto: pl.it.el.classList.contains('compatto')};
   dotRects.push(...vietate.map(v => ({...v, vietata: true})));
   disegnaLinee(placed, dotRects);
 }
@@ -1022,7 +1049,9 @@ function disegnaLinee(placed, dotRects) {
       (pl.it.v.age > SBIADISCI ? ' stroke-dasharray="6 5"' : '') + '/>');
   }
   // cerchi delle barche: dopo le linee, quindi sopra di esse (i fumetti stanno ancora piu' sopra)
-  const pallino = (v, p) => {
+  let selDaDisegnare = null;                          // la selezionata si disegna per ultima: sta sopra a tutte
+  const pallino = (v, p, ultimo) => {
+    if (v.mmsi === sel && !ultimo) { selDaDisegnare = [v, p]; return; }
     const vecchia = v.age > SBIADISCI;
     if (v.mmsi === sel) svg.insertAdjacentHTML('beforeend',
       '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (DOT + 8) + '" fill="rgba(255,212,0,.35)" stroke="#ffd400" stroke-width="3"/>');
@@ -1040,18 +1069,8 @@ function disegnaLinee(placed, dotRects) {
       '<circle cx="' + pl.p.x + '" cy="' + pl.p.y + '" r="' + pl.it.r + '" fill="none" stroke="' + COLORE_GRUPPO + '" stroke-width="2" stroke-dasharray="6 5"/>');
     pl.it.gruppo.membri.forEach((v, i) => pallino(v, pl.it.pts[i]));
   }
-  for (const pl of placed) {
-    if (pl.it.gruppo) continue;
-    const v = pl.it.v, vecchia = v.age > SBIADISCI;
-    if (v.mmsi === sel) svg.insertAdjacentHTML('beforeend',
-      '<circle cx="' + pl.p.x + '" cy="' + pl.p.y + '" r="' + (DOT + 8) + '" fill="rgba(255,212,0,.35)" stroke="#ffd400" stroke-width="3"/>');
-    svg.insertAdjacentHTML('beforeend',
-      '<circle cx="' + pl.p.x + '" cy="' + pl.p.y + '" r="' + DOT + '" fill="#fff" stroke="#fff" stroke-width="2"/>' +
-      '<circle cx="' + pl.p.x + '" cy="' + pl.p.y + '" r="' + DOT + '" fill="' + v.color + '"' +
-      (vecchia ? ' fill-opacity="0.45"' : '') + ' stroke="#fff" stroke-width="2"/>' +
-      '<circle class="hit" cx="' + pl.p.x + '" cy="' + pl.p.y + '" r="' + (DOT + 9) + '" fill="transparent"' +
-      ' data-lat="' + v.lat + '" data-lon="' + v.lon + '"/>');
-  }
+  for (const pl of placed) if (!pl.it.gruppo) pallino(pl.it.v, pl.p);
+  if (selDaDisegnare) pallino(selDaDisegnare[0], selDaDisegnare[1], true);
   frecceArrivi();
 }
 
