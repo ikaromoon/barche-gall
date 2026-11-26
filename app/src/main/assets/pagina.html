@@ -73,6 +73,21 @@
              background:#c62828; color:#fff; font:bold 16px/32px Arial, sans-serif; cursor:pointer;
              box-shadow:0 2px 8px rgba(0,0,0,.4); padding:0; }
   .bubble.compatto { cursor:default; }
+  /* fumetto di gruppo (porto): titolo, numero di barche, elenco su una o due colonne */
+  .bubble.gruppo { width:auto; min-width:calc(170px*var(--s)); border-color:#0d3b66; }
+  .bubble.gruppo .gt { display:flex; justify-content:space-between; align-items:center; gap:calc(10px*var(--s));
+                       padding:calc(6px*var(--s)) calc(10px*var(--s)) calc(4px*var(--s));
+                       font-weight:700; font-size:calc(15px*var(--s)); color:#0d3b66; white-space:nowrap; }
+  .bubble.gruppo .gn { background:#0d3b66; color:#fff; border-radius:calc(10px*var(--s));
+                       padding:0 calc(7px*var(--s)); font-size:calc(12px*var(--s)); line-height:1.6; }
+  .bubble.gruppo .gl { display:grid; column-gap:calc(16px*var(--s)); row-gap:calc(1px*var(--s));
+                       padding:0 calc(10px*var(--s)) calc(7px*var(--s)); font-size:calc(12px*var(--s)); color:#123; }
+  .bubble.gruppo .gl.due { grid-template-columns:auto auto; }
+  .bubble.gruppo .gr { white-space:nowrap; font-weight:600; padding:0 calc(3px*var(--s)); border-radius:4px; }
+  .bubble.gruppo .gr i { display:inline-block; width:.7em; height:.7em; border-radius:50%; margin-right:.4em; vertical-align:middle; }
+  .bubble.gruppo .gr span { color:#567; font-weight:500; margin-left:.4em; }
+  .bubble.gruppo .gr.vecchia { opacity:.45; }
+  .bubble.gruppo .gr.sel { background:rgba(255,212,0,.55); }
   .bubble.cliccabile { pointer-events:auto; cursor:zoom-in; }
   #intera { position:absolute; left:10px; top:10px; z-index:2000; height:26px; padding:0 14px;
             border-radius:13px; background:#0d3b66; color:#fff; font:600 14px/26px "Segoe UI", Roboto, Arial, sans-serif;
@@ -157,6 +172,69 @@ let vessels = [];
 let arrivi = [];
 
 
+// ---------- zone raggruppate (porti) ----------
+// Le barche ferme dentro una zona si riuniscono in un solo fumetto con l'elenco, se sono almeno 2.
+// Solo nella vista d'insieme: avvicinandosi (zoom) il gruppo si scioglie nei fumetti singoli con le foto.
+// Nomi, centri e raggi (in metri) si possono cambiare qui.
+const ZONE = [
+  {nome: 'Porto di Gallipoli', lat: 40.0575, lon: 17.9830, raggio: 350},
+  {nome: 'Porto turistico',    lat: 40.0668, lon: 18.0016, raggio: 300},
+];
+const ZOOM_SCIOGLI = 0.8;            // quanto zoom oltre la vista d'insieme serve per sciogliere i gruppi
+const MOVIMENTO_M = 80;              // spostata di piu' di 80 m negli ultimi 10 minuti = in movimento
+const COLORE_GRUPPO = '#0d3b66';
+function distM(a, b) {
+  const dy = (a.lat - b.lat) * 111320, dx = (a.lon - b.lon) * 111320 * Math.cos(a.lat * Math.PI / 180);
+  return Math.hypot(dx, dy);
+}
+// posizioni recenti di ogni barca, per capire se si sta muovendo
+const storiaPos = {};
+function registraPosizioni() {
+  const ora = Date.now();
+  for (const v of vessels) {
+    const st = storiaPos[v.mmsi] || (storiaPos[v.mmsi] = []);
+    const u = st[st.length - 1];
+    if (!u || u.lat !== v.lat || u.lon !== v.lon) st.push({lat: v.lat, lon: v.lon, t: ora});
+    while (st.length > 1 && ora - st[0].t > 15 * 60000) st.shift();
+  }
+}
+function inMovimento(v) {
+  const st = storiaPos[v.mmsi], ora = Date.now();
+  return !!st && st.some(q => ora - q.t <= 10 * 60000 && distM(q, v) > MOVIMENTO_M);
+}
+function panoramica() { return !vistaIniziale || map.getZoom() < vistaIniziale.zoom + ZOOM_SCIOGLI; }
+let gruppiAttuali = [];
+function calcolaGruppi() {
+  const gruppi = [], presi = new Set();
+  if (!panoramica()) return gruppi;
+  for (const z of ZONE) {
+    const membri = vessels.filter(v => !presi.has(v.mmsi) && distM(v, z) <= z.raggio && !inMovimento(v));
+    if (membri.length < 2) continue;
+    membri.sort((a, b) => ((b.len > 0) - (a.len > 0)) || (b.len || 0) - (a.len || 0) || String(a.name).localeCompare(String(b.name)));
+    membri.forEach(v => presi.add(v.mmsi));
+    gruppi.push({z, membri});
+  }
+  return gruppi;
+}
+function gruppoDi(mmsi) { return gruppiAttuali.find(g => g.membri.some(v => v.mmsi === mmsi)); }
+function zoomGruppo(g) {
+  const b = L.latLngBounds(g.membri.map(v => [v.lat, v.lon]));
+  map.flyToBounds(b.pad(0.8), {maxZoom: 17, duration: 1});
+}
+function fumettoGruppo(g) {
+  const el = document.createElement('div');
+  el.className = 'bubble gruppo cliccabile';
+  el.style.setProperty('--c', COLORE_GRUPPO);
+  const righe = g.membri.map(v =>
+    '<div class="gr' + (v.age > SBIADISCI ? ' vecchia' : '') + (v.mmsi === sel ? ' sel' : '') + '"><i style="background:' + v.color + '"></i>' +
+    esc(v.name) + '<span>' + (v.len ? fmtM(v.len) + ' m' : '-') + '</span></div>').join('');
+  el.innerHTML = '<div class="gt">' + esc(g.z.nome) + '<span class="gn">' + g.membri.length + '</span></div>' +
+                 '<div class="gl' + (g.membri.length >= 4 ? ' due' : '') + '">' + righe + '</div>';
+  if (g.membri.some(v => v.mmsi === sel)) el.classList.add('sel');
+  el.addEventListener('click', () => zoomGruppo(g));
+  return el;
+}
+
 // ---------- telecomando ----------
 let sel = null;                 // mmsi della barca selezionata
 let visibili = [];              // barche disegnate nell'ultimo render: {v, p}
@@ -220,6 +298,8 @@ function tasto(t) {
     if (fotoAperta) { chiudiFoto(); return; }
     const v = barcaSel();
     if (!v) { scegli('dx'); return; }
+    const g = gruppoDi(v.mmsi);
+    if (g) { zoomGruppo(g); return; }               // barca in un gruppo: si entra nel porto
     if (v.photo) apriFoto(v); else zoomSu(v);
     return;
   }
@@ -278,6 +358,7 @@ async function refresh() {
     // anche se l'AIS non lo dice -> sagoma e colore da pesca
     for (const v of vessels) if (/^\s*m\s*\/\s*p\b/i.test(v.name || '')) { v.type = 'Fishing'; v.color = '#f08a24'; }
     aggiornaOrdine();
+    registraPosizioni();
     // una barca gia' sulla mappa non e' piu' "in arrivo", anche se l'ultima lettura di MarineTraffic
     // (ogni 3 minuti) la vedeva ancora fuori: niente freccia doppia
     const normN = n => String(n || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -307,9 +388,15 @@ function render() {
   dots.clearLayers(); labels.innerHTML = ''; svg.innerHTML = '';
   const W = innerWidth, H = innerHeight;
   const items = [];
+  gruppiAttuali = calcolaGruppi();
+  const nelGruppo = new Set();
+  for (const g of gruppiAttuali) g.membri.forEach(v => nelGruppo.add(v.mmsi));
+  visibili = [];
   for (const v of vessels) {
     const p = map.latLngToContainerPoint([v.lat, v.lon]);
     if (p.x < 0 || p.y < 0 || p.x > W || p.y > H) continue;
+    visibili.push({v, p});
+    if (nelGruppo.has(v.mmsi)) continue;               // e' dentro il fumetto del suo gruppo
     const el = document.createElement('div');
     el.className = 'bubble';
     el.style.setProperty('--c', v.color);
@@ -326,9 +413,18 @@ function render() {
     labels.appendChild(el);
     items.push({v, p, el, w: el.offsetWidth, h: el.offsetHeight});
   }
-  visibili = items.map(it => ({v: it.v, p: it.p}));
+  // un fumetto per ogni gruppo, collegato al cerchio tratteggiato che racchiude le sue barche
+  for (const g of gruppiAttuali) {
+    const pts = g.membri.map(v => map.latLngToContainerPoint([v.lat, v.lon]));
+    const c = {x: pts.reduce((t, q) => t + q.x, 0) / pts.length, y: pts.reduce((t, q) => t + q.y, 0) / pts.length};
+    const r = Math.max(18, ...pts.map(q => Math.hypot(q.x - c.x, q.y - c.y) + DOT + 8));
+    if (c.x < 0 || c.y < 0 || c.x > W || c.y > H) continue;
+    const el = fumettoGruppo(g);
+    labels.appendChild(el);
+    items.push({v: {mmsi: 'gruppo:' + g.z.nome, color: COLORE_GRUPPO, age: 0}, gruppo: g, pts, p: c, r,
+                el, w: el.offsetWidth, h: el.offsetHeight});
+  }
   if (sel && !visibili.some(o => o.v.mmsi === sel)) sel = null;      // barca uscita dalla vista
-  if (sel) { const it = items.find(o => o.v.mmsi === sel); items.splice(items.indexOf(it), 1); items.unshift(it); it.n = 1e9; }
   disegnaScala();
   disegnaArrivi(items.map(it => it.p), W, H);
   const sc = document.getElementById('scala');
@@ -631,7 +727,9 @@ function segHitsRect(p, q, r) {          // il segmento p-q attraversa il rettan
 
 function place(items, W, H) {
   const M = 6;
-  const dotRects = items.map(it => ({x: it.p.x - DOT - 3, y: it.p.y - DOT - 3, w: 2 * DOT + 6, h: 2 * DOT + 6}));
+  const dotRects = items.map(it => it.gruppo
+    ? {x: it.p.x - it.r, y: it.p.y - it.r, w: 2 * it.r, h: 2 * it.r, it}
+    : {x: it.p.x - DOT - 3, y: it.p.y - DOT - 3, w: 2 * DOT + 6, h: 2 * DOT + 6, it});
   // zone vietate: pannelli, pulsanti, barra di stato -> nessun fumetto ci puo' andare sopra
   const vietate = zoneOccupate();
   const arr = document.getElementById('arrivi');
@@ -641,12 +739,13 @@ function place(items, W, H) {
   }
   for (const it of items)
     it.n = items.filter(o => Math.hypot(o.p.x - it.p.x, o.p.y - it.p.y) < 300).length;
-  items.sort((a, b) => (b.v.mmsi === sel) - (a.v.mmsi === sel) || b.n - a.n || a.p.y - b.p.y);     // prima la selezionata, poi le zone affollate
+  const conSel = it => it.gruppo ? it.gruppo.membri.some(v => v.mmsi === sel) : it.v.mmsi === sel;
+  items.sort((a, b) => conSel(b) - conSel(a) || (!!b.gruppo - !!a.gruppo) || b.n - a.n || a.p.y - b.p.y);     // prima la selezionata, poi i gruppi e le zone affollate
   const placed = [];
   const cerca = (it, raggi) => {
     let best = null, bestScore = Infinity;
     for (const r0 of raggi) {
-      const r = r0 * K;
+      const r = r0 * K + (it.r || 0);                // i gruppi partono dal bordo del loro cerchio
       for (const a of ANGLES) {
         const dx = Math.cos(a), dy = Math.sin(a);
         const cx = it.p.x + dx * (r + it.w / 2), cy = it.p.y + dy * (r + it.h / 2);
@@ -658,7 +757,7 @@ function place(items, W, H) {
         if (vietate.some(v => !dentro(it.p, v, 0) && segHitsRect(it.p, fine, v))) continue;
         let ov = 0, cross = 0;
         for (const q of placed) { ov += overlap(rc, q.rc, GAP); if (segHitsRect(it.p, fine, q.rc)) cross++; }
-        for (const d of dotRects) ov += overlap(rc, d, 2);
+        for (const d of dotRects) if (d.it !== it) ov += overlap(rc, d, 2);
         for (const q of placed) if (segHitsRect(q.p, nearest(q.p, q.rc), rc)) cross++;
         const score = ov * 50 + cross * 60 + r;
         if (ov === 0 && cross <= 1) return {rc, libero: true};
@@ -806,7 +905,12 @@ function disegnaLinee(placed, dotRects) {
   const ordine = placed.slice().sort((a, b) =>
     Math.hypot(b.rc.x - b.p.x, b.rc.y - b.p.y) - Math.hypot(a.rc.x - a.p.x, a.rc.y - a.p.y));
   for (const pl of ordine) {
-    const a = pl.p, b = nearest(a, pl.rc);
+    let a = pl.p;
+    const b = nearest(a, pl.rc);
+    if (pl.it.gruppo) {                               // la linea del gruppo parte dal bordo del cerchio
+      const dd = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      a = {x: a.x + (b.x - a.x) / dd * pl.it.r, y: a.y + (b.y - a.y) / dd * pl.it.r};
+    }
     const L = Math.hypot(b.x - a.x, b.y - a.y) || 1;
     const nx = -(b.y - a.y) / L, ny = (b.x - a.x) / L;
     // sempre un po' curva; se serve, curva di piu' per aggirare gli ostacoli
@@ -819,7 +923,7 @@ function disegnaLinee(placed, dotRects) {
       let hit = 0, cross = 0;
       for (let i = 2; i < pts.length - 2; i++) {
         for (const q of placed) if (q !== pl && dentro(pts[i], q.rc, 4)) hit++;
-        for (const d of dotRects) if (dentro(pts[i], d, 0) && Math.hypot(pts[i].x - a.x, pts[i].y - a.y) > 2 * DOT) hit += d.vietata ? 20 : 1;
+        for (const d of dotRects) if (d.it !== pl.it && dentro(pts[i], d, 0) && Math.hypot(pts[i].x - a.x, pts[i].y - a.y) > 2 * DOT) hit += d.vietata ? 20 : 1;
       }
       for (const f of fatte)
         for (let i = 1; i < pts.length; i++)
@@ -842,7 +946,26 @@ function disegnaLinee(placed, dotRects) {
       (pl.it.v.age > SBIADISCI ? ' stroke-dasharray="6 5"' : '') + '/>');
   }
   // cerchi delle barche: dopo le linee, quindi sopra di esse (i fumetti stanno ancora piu' sopra)
+  const pallino = (v, p) => {
+    const vecchia = v.age > SBIADISCI;
+    if (v.mmsi === sel) svg.insertAdjacentHTML('beforeend',
+      '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (DOT + 8) + '" fill="rgba(255,212,0,.35)" stroke="#ffd400" stroke-width="3"/>');
+    svg.insertAdjacentHTML('beforeend',
+      '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + DOT + '" fill="#fff" stroke="#fff" stroke-width="2"/>' +
+      '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + DOT + '" fill="' + v.color + '"' +
+      (vecchia ? ' fill-opacity="0.45"' : '') + ' stroke="#fff" stroke-width="2"/>' +
+      '<circle class="hit" cx="' + p.x + '" cy="' + p.y + '" r="' + (DOT + 9) + '" fill="transparent"' +
+      ' data-lat="' + v.lat + '" data-lon="' + v.lon + '"/>');
+  };
   for (const pl of placed) {
+    if (!pl.it.gruppo) continue;                      // gruppi: cerchio tratteggiato e pallini delle barche
+    svg.insertAdjacentHTML('beforeend',
+      '<circle cx="' + pl.p.x + '" cy="' + pl.p.y + '" r="' + pl.it.r + '" fill="rgba(255,255,255,.18)" stroke="#fff" stroke-width="4"/>' +
+      '<circle cx="' + pl.p.x + '" cy="' + pl.p.y + '" r="' + pl.it.r + '" fill="none" stroke="' + COLORE_GRUPPO + '" stroke-width="2" stroke-dasharray="6 5"/>');
+    pl.it.gruppo.membri.forEach((v, i) => pallino(v, pl.it.pts[i]));
+  }
+  for (const pl of placed) {
+    if (pl.it.gruppo) continue;
     const v = pl.it.v, vecchia = v.age > SBIADISCI;
     if (v.mmsi === sel) svg.insertAdjacentHTML('beforeend',
       '<circle cx="' + pl.p.x + '" cy="' + pl.p.y + '" r="' + (DOT + 8) + '" fill="rgba(255,212,0,.35)" stroke="#ffd400" stroke-width="3"/>');
