@@ -175,6 +175,13 @@
   #ess .gruppo-aperto > .t { font-size:.9375rem; color:var(--ink); font-weight:500; margin-bottom:.6rem; display:flex; justify-content:space-between; }
   #ess .gruppo-aperto > .t span { font-weight:400; color:var(--ink2); font-size:.8125rem; }
   #ess .riga-s { margin:0 -.7rem .35rem; padding:.35rem .7rem .45rem; border-radius:.5rem; }
+  #ess .leg { display:grid; grid-template-columns:11.5rem 9rem 1fr; align-items:center; column-gap:.6rem; font-size:.875rem; color:var(--ink2); }
+  #ess .leg.vecchia { opacity:.55; }
+  #ess .leg .n { display:flex; align-items:center; gap:.55rem; white-space:nowrap; overflow:hidden; }
+  #ess .leg .n i { width:.45rem; height:.45rem; border-radius:50%; flex:none; }
+  #ess .leg .n em { font-style:normal; overflow:hidden; text-overflow:ellipsis; }
+  #ess .leg .l { text-align:right; white-space:nowrap; }
+  #ess .leg svg { display:block; color:var(--ink); align-self:end; margin-bottom:.15rem; }
   #ess .riga-s.sel { background:rgba(242,244,245,.08); box-shadow:inset 3px 0 0 var(--ink); }
   #ess .riga-s.vecchia { opacity:.55; }
   #ess .riga-s .top { display:flex; align-items:center; gap:.55rem; font-size:.875rem; color:var(--ink2); margin-bottom:.3rem; }
@@ -1319,15 +1326,15 @@ function fotoSagoma(v) {
 }
 
 // colonna in scala: una barca per riga, tutte allineate a sinistra e alla stessa scala (0,8 rem per metro se c'e' posto)
-function colonnaScala(lista, larg, altMax) {
+function colonnaScala(lista, larg, altMax, compatta) {
   const conL = lista.filter(v => v.len > 0), senza = lista.filter(v => !(v.len > 0));
   let html = '';
   if (conL.length) {
-    const RIGA = remPx(2.5), maxL = Math.max(...conL.map(v => v.len));
+    const RIGA = remPx(compatta ? 2.15 : 2.5), maxL = Math.max(...conL.map(v => v.len));
     const alt = (v, p) => sagomaSvg(v, v.len * p).h + RIGA;
     const tot = p => conL.reduce((t, v) => t + alt(v, p), 0);
     let ppm = Math.min(larg * 0.75 / maxL, remPx(.8));
-    for (let k = 0; k < 4 && tot(ppm) > altMax; k++) ppm = Math.max(remPx(.8) * 0.4, ppm * altMax / tot(ppm));
+    for (let k = 0; k < 4 && tot(ppm) > altMax; k++) ppm = Math.max(remPx(.8) * (compatta ? 0.3 : 0.4), ppm * altMax / tot(ppm));
     const dentro = []; let h = 0;
     for (const v of conL) { const a = alt(v, ppm); if (h + a > altMax + 2) break; dentro.push(v); h += a; }
     const scelta = conL.find(v => v.mmsi === sel);
@@ -1336,7 +1343,7 @@ function colonnaScala(lista, larg, altMax) {
       dentro.push(scelta); dentro.sort((a, b) => conL.indexOf(a) - conL.indexOf(b));
     }
     for (const v of dentro)
-      html += '<div class="riga-s' + (v.mmsi === sel ? ' sel' : '') + (v.age > SBIADISCI ? ' vecchia' : '') + '"><div class="top"><i style="background:' + v.color + '"></i><em>' +
+      html += '<div class="riga-s' + (compatta ? ' c' : '') + (v.mmsi === sel ? ' sel' : '') + (v.age > SBIADISCI ? ' vecchia' : '') + '"><div class="top"><i style="background:' + v.color + '"></i><em>' +
               esc(v.name) + '</em><span>' + fmtM(v.len) + ' m</span></div>' + sagomaSvg(v, v.len * ppm, v.mmsi === sel).svg + '</div>';
     const passo = [2, 5, 10, 20, 50].find(p => p * ppm >= remPx(3)) || 50, n = Math.max(1, Math.min(Math.floor(larg / (passo * ppm)), Math.ceil(maxL / passo)));
     html += '<svg width="' + larg + '" height="' + remPx(1.8) + '" style="overflow:visible;margin-top:.4rem" stroke="var(--ink3)" fill="var(--ink2)"><line x1="0" x2="' + n * passo * ppm + '" y1="1" y2="1"/>';
@@ -1347,6 +1354,53 @@ function colonnaScala(lista, larg, altMax) {
     if (fuori.length) html += '<div class="altre">Altre ' + fuori.length + ': ' + fuori.map(v => esc(v.name)).join(', ') + '</div>';
   }
   if (senza.length) html += '<div class="altre">Senza misure: ' + senza.map(v => (v.mmsi === sel ? '<b style="color:var(--ink)">' + esc(v.name) + '</b>' : esc(v.name))).join(', ') + '</div>';
+  return html;
+}
+
+// sagoma "bassa" per la legenda: senza vele e con gli alberi tagliati, cosi' resta bassa e ci stanno tutte le barche
+const ALTO_LEG = -26;
+function sagomaBassa(v, w) {
+  const s = SAGOME[sagomaPerTipo(v.type, v.len)], tieni = [];
+  for (const d of s.d) {
+    const n = d.match(/-?\d+(\.\d+)?/g).map(Number), xs = n.filter((_, i) => i % 2 === 0), ys = n.filter((_, i) => i % 2 === 1);
+    const alto = Math.min(...ys), largo = Math.max(...xs) - Math.min(...xs);
+    if (alto >= ALTO_LEG || largo <= 2.2) tieni.push(d);         // scafo, tuga, ponti, alberi (tagliati dal riquadro)
+  }
+  const top = Math.max(ALTO_LEG, s.top), h = (s.bottom - top) * w / 100;
+  return {h, svg: '<svg width="' + w + '" height="' + h + '" viewBox="0 ' + top + ' 100 ' + (s.bottom - top) + '"><g fill="currentColor">' +
+                  tieni.map(d => '<path d="' + d + '"/>').join('') + '</g></svg>'};
+}
+// legenda con tutte le barche: nome, sagoma e lunghezza sulla stessa riga; le sagome partono tutte dalla stessa linea
+function legendaScala(lista, altMax) {
+  const conL = lista.filter(v => v.len > 0), senza = lista.filter(v => !(v.len > 0));
+  const LARG = remPx(9), MINR = remPx(1.25), SP = remPx(.12);
+  if (!conL.length) return senza.length ? '<div class="altre">Senza misure: ' + senza.map(v => esc(v.name)).join(', ') + '</div>' : '';
+  const maxL = Math.max(...conL.map(v => v.len));
+  const hRiga = (v, p) => Math.max(MINR, sagomaBassa(v, v.len * p).h) + SP;
+  const tot = (p, n) => conL.slice(0, n).reduce((t, v) => t + hRiga(v, p), 0);
+  const riservato = remPx(2.4) + (senza.length ? remPx(1.4) : 0);
+  // scala piu' grande possibile (al massimo 0,8 rem per metro) con cui ci stanno tutte; se non bastano, le prime che ci stanno
+  let lo = 0.0001, hi = Math.min(LARG / maxL, remPx(.8)), n = conL.length;
+  const spazio = () => altMax - riservato - (n < conL.length ? remPx(2.6) : 0);
+  while (n > 1 && tot(lo, n) > spazio()) n--;                     // quante ne entrano (righe alla minima altezza)
+  if (tot(hi, n) > spazio()) {                                     // la scala piu' grande con cui ci stanno
+    for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; if (tot(m, n) <= spazio()) lo = m; else hi = m; }
+    hi = lo;
+  }
+  const ppm = Math.max(hi, remPx(.05));
+  let html = '';
+  for (const v of conL.slice(0, n))
+    html += '<div class="leg' + (v.age > SBIADISCI ? ' vecchia' : '') + '" style="height:' + (hRiga(v, ppm) - SP) + 'px;margin-bottom:' + SP + 'px"><span class="n"><i style="background:' +
+            v.color + '"></i><em>' + esc(v.name) + '</em></span>' + sagomaBassa(v, v.len * ppm).svg + '<span class="l">' + fmtM(v.len) + ' m</span></div>';
+  // righello sotto le sagome, alla stessa scala
+  const passo = [2, 5, 10, 20, 50].find(p => p * ppm >= remPx(2.6)) || 50, nt = Math.max(1, Math.min(Math.floor(LARG / (passo * ppm)), Math.ceil(maxL / passo)));
+  html += '<div class="leg" style="margin-top:.3rem"><span></span><svg width="' + LARG + '" height="' + remPx(1.8) + '" style="overflow:visible" stroke="var(--ink3)" fill="var(--ink2)">' +
+          '<line x1="0" x2="' + nt * passo * ppm + '" y1="1" y2="1"/>';
+  for (let k = 0; k <= nt; k++) html += '<line x1="' + k * passo * ppm + '" x2="' + k * passo * ppm + '" y1="1" y2="' + remPx(.4) + '"/><text stroke="none" x="' + k * passo * ppm +
+       '" y="' + remPx(1.35) + '" font-size="' + remPx(.75) + '" text-anchor="' + (k ? (k === nt ? 'end' : 'middle') : 'start') + '">' + k * passo + (k === nt ? ' m' : '') + '</text>';
+  html += '</svg><span></span></div>';
+  if (n < conL.length) html += '<div class="altre">Altre ' + (conL.length - n) + ': ' + conL.slice(n).map(v => esc(v.name)).join(', ') + '</div>';
+  if (senza.length) html += '<div class="altre">Senza misure: ' + senza.map(v => esc(v.name)).join(', ') + '</div>';
   return html;
 }
 
@@ -1437,7 +1491,13 @@ function renderEss() {
   const nArr = arrivi.length;
   const altMax = H - remPx(7) - remPx(2.6) * (sez.length - 1) - (nArr ? remPx(2.2) + remPx(1.8) * nArr : 0) - remPx(2.6) - remPx(2.6);
   let col = '';
-  for (const s of sez) {
+  if (!v) {          // nessuna barca scelta: legenda con tutte le barche in scala, dalla piu' lunga
+    const tutte = visibili.map(o => o.v).sort((a, b) => ((b.len > 0) - (a.len > 0)) || (b.len || 0) - (a.len || 0) || String(a.name).localeCompare(String(b.name)));
+    const altTutte = H - remPx(7) - (nArr ? remPx(2.2) + remPx(1.8) * nArr : 0) - remPx(2.6);
+    col = '<div class="gruppo-aperto"><div class="t">Barche in scala<span>' + tutte.length + (tutte.length === 1 ? ' barca' : ' barche') + '</span></div>' +
+          legendaScala(tutte, altTutte) + '</div>';
+  }
+  else for (const s of sez) {
     if (s === sezAperta) col += '<div class="gruppo-aperto"><div class="t">' + esc(s.nome) + '<span>' + s.barche.length + (s.barche.length === 1 ? ' barca' : ' barche') + '</span></div>' +
                                colonnaScala(s.barche, remPx(24), altMax) + '</div>';
     else col += '<div class="gruppo-chiuso">' + esc(s.nome) + '<span class="pallini">' + s.barche.map(x => '<i style="background:' + x.color + '"></i>').join('') +
