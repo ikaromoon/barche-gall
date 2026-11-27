@@ -1049,6 +1049,15 @@ function frecceArrivi() {
 
 function disegnaLinee(placed, dotRects) {
   const fatte = [];
+  // evidenziazione gialla della barca selezionata: disegnata per PRIMA, cosi' sta dietro
+  // a tutte le linee e a tutti i pallini (il pallino selezionato resta comunque davanti agli altri)
+  for (const pl of placed) {
+    let ps = null;
+    if (pl.it.gruppo) { const i = pl.it.gruppo.membri.findIndex(v => v.mmsi === sel); if (i >= 0) ps = pl.it.pts[i]; }
+    else if (pl.it.v.mmsi === sel) ps = pl.p;
+    if (ps) svg.insertAdjacentHTML('beforeend',
+      '<circle cx="' + ps.x + '" cy="' + ps.y + '" r="' + (DOT + 8) + '" fill="rgba(255,212,0,.35)" stroke="#ffd400" stroke-width="3"/>');
+  }
   // prima le linee piu' lunghe (sono quelle con meno scelta)
   const ordine = placed.slice().sort((a, b) =>
     Math.hypot(b.rc.x - b.p.x, b.rc.y - b.p.y) - Math.hypot(a.rc.x - a.p.x, a.rc.y - a.p.y));
@@ -1098,8 +1107,6 @@ function disegnaLinee(placed, dotRects) {
   const pallino = (v, p, ultimo) => {
     if (v.mmsi === sel && !ultimo) { selDaDisegnare = [v, p]; return; }
     const vecchia = v.age > SBIADISCI;
-    if (v.mmsi === sel) svg.insertAdjacentHTML('beforeend',
-      '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (DOT + 8) + '" fill="rgba(255,212,0,.35)" stroke="#ffd400" stroke-width="3"/>');
     svg.insertAdjacentHTML('beforeend',
       '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + DOT + '" fill="#fff" stroke="#fff" stroke-width="2"/>' +
       '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + DOT + '" fill="' + v.color + '"' +
