@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="it"><head><meta charset="utf-8"><title>Gallipoli - barche</title>
 <link rel="stylesheet" href="leaflet.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap">
 <script src="leaflet.js"></script>
 <script>
   // aperta da sola nel browser senza leaflet.js accanto: la libreria della mappa si prende da internet
@@ -109,6 +110,104 @@
   .bubble.sel { outline:calc(4px*var(--s)) solid #ffd400; outline-offset:calc(2px*var(--s));
                 box-shadow:0 0 0 calc(9px*var(--s)) rgba(255,212,0,.35), 0 6px 22px rgba(0,0,0,.5); z-index:5; }
   #lines .hit { pointer-events:all; cursor:zoom-in; }
+  /* ================= MENU OPZIONI (tasto Menu) ================= */
+  #menu { position:fixed; inset:0; z-index:4000; display:none; align-items:center; justify-content:center; background:rgba(8,12,16,.45); }
+  #menu.aperto { display:flex; }
+  #menu .box { min-width:calc(560px*var(--s)); background:rgba(24,27,30,.96); color:#f2f4f5; border-radius:calc(18px*var(--s));
+               padding:calc(30px*var(--s)) calc(36px*var(--s)) calc(26px*var(--s)); box-shadow:0 20px 60px rgba(0,0,0,.5);
+               font:400 calc(20px*var(--s)) "Inter", Roboto, "Segoe UI", Arial, sans-serif; }
+  #menu h2 { margin:0 0 calc(22px*var(--s)); font-size:calc(28px*var(--s)); font-weight:600; letter-spacing:-.01em; }
+  #menu .voce { display:flex; align-items:center; justify-content:space-between; gap:calc(30px*var(--s));
+                padding:calc(14px*var(--s)) calc(16px*var(--s)); margin:0 calc(-16px*var(--s)); border-radius:calc(12px*var(--s)); }
+  #menu .voce.attiva { background:rgba(242,244,245,.08); }
+  #menu .scelte { display:flex; gap:calc(6px*var(--s)); padding:calc(4px*var(--s)); border-radius:calc(30px*var(--s)); background:rgba(242,244,245,.08); }
+  #menu .scelte span { padding:calc(7px*var(--s)) calc(18px*var(--s)); border-radius:calc(30px*var(--s)); color:rgba(242,244,245,.62); }
+  #menu .scelte span.su { background:#f2f4f5; color:#15181b; font-weight:600; }
+  #menu .piede { margin-top:calc(22px*var(--s)); font-size:calc(15px*var(--s)); color:rgba(242,244,245,.45); }
+
+  /* ================= TEMA ESSENZIALE ================= */
+  /* 1rem = 1/100 della larghezza (19,2 px sul televisore): vale solo per il tema essenziale */
+  html { font-size:calc(100vw / 100); }
+  #ess { display:none; }
+  body.ess { background:#1c1f22; --fondo:#1c1f22; --ink:#f2f4f5; --ink2:rgba(242,244,245,.62); --ink3:rgba(242,244,245,.34);
+             --filo:rgba(242,244,245,.16); --velo:rgba(17,19,21,.86); --bordo-punto:rgba(10,12,14,.8); --ombra:0 1px 10px rgba(0,0,0,.7); }
+  body.ess #map { background:#1c1f22 !important; }
+  body.ess .leaflet-container { background:#1c1f22; }
+  body.ess .leaflet-tile-pane { filter:grayscale(1) brightness(.36) contrast(1.4); }   /* mappa vera (moli e banchine) in grigio scuro */
+  body.ess #lines, body.ess #labels, body.ess #scala, body.ess #arrivi, body.ess #stato, body.ess #aiuto { display:none !important; }
+  body.ess #ess { display:block; font-family:"Inter", Roboto, "Segoe UI", Arial, sans-serif; font-feature-settings:"tnum" 1; color:var(--ink);
+                  -webkit-font-smoothing:antialiased; }
+  body.ess #intera { background:var(--ink); color:var(--fondo); font-family:"Inter", Roboto, Arial, sans-serif; left:auto; right:50%; transform:translateX(50%); top:1.2rem; }
+  #ess .velo-basso { position:absolute; left:0; right:30rem; bottom:0; height:24rem; z-index:1001; pointer-events:none;
+                     background:linear-gradient(to top, var(--velo) 0, var(--velo) 40%, transparent); }
+  #ess .velo-destra { position:absolute; right:0; top:0; bottom:0; width:40rem; z-index:1001; pointer-events:none;
+                      background:linear-gradient(to left, var(--velo), transparent); opacity:.85; }
+  #ess .velo-alto { position:absolute; left:0; top:0; width:40rem; height:12rem; z-index:1001; pointer-events:none;
+                    background:radial-gradient(ellipse at 0 0, var(--velo), transparent 70%); }
+  #ess-mappa { position:absolute; inset:0; z-index:1002; pointer-events:none; }
+  #ess-ui { position:absolute; inset:0; z-index:1005; pointer-events:none; }
+  #ess .testata { position:absolute; left:5rem; top:3.5rem; }
+  #ess .testata h1 { margin:0; font-size:1.375rem; font-weight:600; letter-spacing:-.01em; }
+  #ess .testata p { margin:.25rem 0 0; font-size:1rem; color:var(--ink2); }
+  #ess .testata p.err { color:#ff8a80; }
+  /* scheda della barca selezionata */
+  #ess .scheda { position:absolute; left:5rem; right:33rem; bottom:4.25rem; display:grid; grid-template-columns:20rem 1fr; column-gap:2.5rem; align-items:end; }
+  #ess .foto { width:20rem; aspect-ratio:3 / 2; border-radius:.75rem; overflow:hidden; box-shadow:0 1.5rem 3rem rgba(0,0,0,.28); background:#2a2f33; }
+  #ess .foto img { display:block; width:100%; height:100%; object-fit:cover; }
+  #ess .nome { margin:0; font-size:3.5rem; font-weight:300; letter-spacing:-.025em; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #ess .sotto { margin:.75rem 0 0; font-size:1.125rem; color:var(--ink2); }
+  #ess .dati { display:flex; gap:2.5rem; margin-top:1.75rem; }
+  #ess .dati div { font-size:.8125rem; color:var(--ink2); }
+  #ess .dati b { display:block; font-size:1.75rem; font-weight:400; color:var(--ink); letter-spacing:-.01em; margin-bottom:.15rem; white-space:nowrap; }
+  #ess .dati b small { font-size:1rem; color:var(--ink2); margin-left:.2rem; font-weight:400; }
+  #ess .entra-in { margin-top:1.1rem; font-size:.875rem; color:var(--ink2); }
+  #ess kbd { font:inherit; color:var(--ink); border:1px solid var(--ink3); border-radius:.3rem; padding:.05rem .4rem; margin-right:.35rem; }
+  #ess .vuota { color:var(--ink2); font-size:1.125rem; }
+  #ess .cambia > * { transition:opacity .35s ease, transform .45s cubic-bezier(.2,.7,.2,1); }
+  #ess .cambia.prima > * { opacity:0; transform:translateY(.4rem); }
+  /* colonna a destra: gruppi, scala, arrivi */
+  #ess .colonna { position:absolute; right:5rem; top:3.5rem; bottom:3.5rem; width:24rem; display:flex; flex-direction:column; }
+  #ess .gruppo-chiuso { display:flex; align-items:center; gap:.9rem; height:2.6rem; border-top:1px solid var(--filo); font-size:.9375rem; color:var(--ink2); flex:none; }
+  #ess .gruppo-chiuso b { font-weight:400; color:var(--ink3); margin-left:auto; }
+  #ess .pallini { display:flex; gap:.3rem; flex-wrap:nowrap; overflow:hidden; max-width:11rem; }
+  #ess .pallini i { width:.45rem; height:.45rem; border-radius:50%; flex:none; }
+  #ess .gruppo-aperto { border-top:1px solid var(--ink3); padding:.7rem 0 .9rem; flex:none; }
+  #ess .gruppo-aperto > .t { font-size:.9375rem; color:var(--ink); font-weight:500; margin-bottom:.6rem; display:flex; justify-content:space-between; }
+  #ess .gruppo-aperto > .t span { font-weight:400; color:var(--ink2); font-size:.8125rem; }
+  #ess .riga-s { margin:0 -.7rem .35rem; padding:.35rem .7rem .45rem; border-radius:.5rem; }
+  #ess .riga-s.sel { background:rgba(242,244,245,.08); box-shadow:inset 3px 0 0 var(--ink); }
+  #ess .riga-s.vecchia { opacity:.55; }
+  #ess .riga-s .top { display:flex; align-items:center; gap:.55rem; font-size:.875rem; color:var(--ink2); margin-bottom:.3rem; }
+  #ess .riga-s .top i { width:.45rem; height:.45rem; border-radius:50%; flex:none; }
+  #ess .riga-s .top span { margin-left:auto; white-space:nowrap; }
+  #ess .riga-s .top em { font-style:normal; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #ess .riga-s.sel .top { color:var(--ink); font-weight:500; }
+  #ess .riga-s svg { display:block; }
+  #ess .altre { font-size:.8125rem; color:var(--ink3); margin-top:.3rem; }
+  #ess .arrivi { margin-top:auto; padding-top:.8rem; flex:none; }
+  #ess .arrivi h3 { margin:0 0 .4rem; font-size:.8125rem; font-weight:500; color:var(--ink2); }
+  #ess .arrivi div { display:flex; align-items:center; gap:.55rem; height:1.8rem; font-size:.9375rem; color:var(--ink); }
+  #ess .arrivi div i { width:.5rem; height:.5rem; border-radius:50%; flex:none; }
+  #ess .arrivi div span { margin-left:auto; color:var(--ink2); white-space:nowrap; }
+  #ess .aiuto { position:absolute; left:50%; bottom:1.25rem; transform:translateX(-50%); font-size:.75rem; color:var(--ink3); white-space:nowrap; }
+  #ess .aiuto span + span { margin-left:1.75rem; }
+  /* segni sulla mappa */
+  #ess .s { position:absolute; width:0; height:0; }
+  #ess .p { position:absolute; width:.7rem; height:.7rem; left:-.35rem; top:-.35rem; border-radius:50%; background:var(--c); box-shadow:0 0 0 .14rem var(--bordo-punto); }
+  #ess .p.vecchia { opacity:.45; }
+  #ess .p.sel { width:1.05rem; height:1.05rem; left:-.525rem; top:-.525rem; opacity:1; box-shadow:0 0 0 .2rem var(--fondo), 0 0 0 .34rem var(--ink); z-index:2; }
+  #ess .np { position:absolute; white-space:nowrap; background:var(--ink); color:var(--fondo); font-size:.875rem; font-weight:600; padding:.22rem .65rem;
+             border-radius:1rem; z-index:3; box-shadow:0 .3rem 1rem rgba(0,0,0,.3); }
+  #ess .rotta { position:absolute; left:0; top:-.75px; width:1.6rem; height:1.5px; background:var(--c); transform-origin:0 50%; }
+  #ess .centro { position:absolute; width:.3rem; height:.3rem; left:-.15rem; top:-.15rem; border-radius:50%; background:var(--ink2); }
+  #ess .pill { position:absolute; transform:translate(-50%, -50%); display:flex; align-items:center; gap:.6rem; white-space:nowrap; padding:.4rem .8rem;
+               border-radius:2rem; font-size:.875rem; color:var(--ink2); background:rgba(28,31,34,.82); border:1px solid var(--filo); }
+  #ess .pill.qui { color:var(--ink); border-color:var(--ink2); }
+  #ess .pill .pp { display:flex; gap:.3rem; align-items:center; }
+  #ess .pill .pp i { width:.5rem; height:.5rem; border-radius:50%; }
+  #ess .pill .pp i.sel { width:.75rem; height:.75rem; box-shadow:0 0 0 .14rem var(--fondo), 0 0 0 .26rem var(--ink); margin:0 .2rem; }
+  body.ess #zoom .box { background:#1c1f22; color:#f2f4f5; }
+  body.ess #zoom .info { color:#f2f4f5; font-family:"Inter", Roboto, Arial, sans-serif; }
 </style></head>
 <body>
 <div id="map"></div>
@@ -117,10 +216,12 @@
 <div id="labels"></div>
 <div id="stato">caricamento...</div>
 <div id="intera">&#x2B05; Indietro: mappa intera</div>
-<div id="aiuto">&#x25B2;&#x25BC; barca &middot; &#x25C0;&#x25B6; vicina &middot; OK foto &middot; &#x25B6;&#x275A;&#x275A; zoom barca &middot; &#x23EA;&#x23E9; zoom &middot; &#x2630; pannello &middot; &#x21A9; esci</div>
+<div id="aiuto">&#x25B2;&#x25BC; barca &middot; &#x25C0;&#x25B6; vicina &middot; OK foto &middot; &#x25B6;&#x275A;&#x275A; zoom barca &middot; &#x23EA;&#x23E9; zoom &middot; &#x2630; menu &middot; &#x21A9; esci</div>
 <div id="scala"></div>
 <div id="arrivi"></div>
 <div id="zoom"><div class="box"><button class="x" title="Chiudi">&#x2715;</button><img alt=""><div class="info"></div></div></div>
+<div id="ess"><div class="velo-alto"></div><div class="velo-destra"></div><div class="velo-basso"></div><div id="ess-mappa"></div><div id="ess-ui"></div></div>
+<div id="menu"></div>
 <script>
 // l'app sostituisce il segnaposto con l'area vera; aperta da sola nel browser usa l'area standard
 const BOUNDS = JSON.parse('%%BOUNDS%%'.charAt(0) === '[' ? '%%BOUNDS%%' : '[[39.9942,17.8501],[40.0694,18.0247]]');
@@ -155,9 +256,48 @@ function usaSfondo(i) {
 // le pagine aperte come file ("accesso bloccato"), quindi solo mare blu
 if (location.protocol === 'file:' || /[?&]prova/.test(location.search)) document.getElementById('map').style.background = '#aad3df';
 else usaSfondo(0);
+// ---------- tema (Originale / Essenziale) e menu opzioni ----------
+const TEMI = [['originale', 'Originale'], ['essenziale', 'Essenziale']];
+let tema = 'originale';
+try { if (localStorage.getItem('tema') === 'essenziale') tema = 'essenziale'; } catch (e) { }
+let menuAperto = false;
+function disegnaMenu() {
+  const m = document.getElementById('menu');
+  m.classList.toggle('aperto', menuAperto);
+  if (!menuAperto) return;
+  m.innerHTML = '<div class="box"><h2>Opzioni</h2>' +
+    '<div class="voce attiva"><span>Tema</span><span class="scelte">' +
+    TEMI.map(([k, n]) => '<span class="' + (k === tema ? 'su' : '') + '">' + n + '</span>').join('') + '</span></div>' +
+    '<div class="piede">&#x25C0;&#x25B6; cambia &nbsp;&nbsp; OK o &#x21A9; chiudi</div></div>';
+}
+function gestisciMenu(t) {
+  if (t === 'sx' || t === 'dx') {
+    const i = TEMI.findIndex(([k]) => k === tema);
+    impostaTema(TEMI[(i + (t === 'dx' ? 1 : -1) + TEMI.length) % TEMI.length][0]);
+    disegnaMenu();
+    return;
+  }
+  if (t === 'ok' || t === 'pannello') { menuAperto = false; disegnaMenu(); }
+}
+function impostaTema(t) {
+  tema = t;
+  try { localStorage.setItem('tema', t); } catch (e) { }
+  document.body.classList.toggle('ess', t === 'essenziale');
+  fit();
+  render();
+}
+function essenziale() { return tema === 'essenziale'; }
+document.body.classList.toggle('ess', essenziale());
+
+// spazio occupato dai pannelli del tema essenziale (per centrare la mappa nella parte libera)
+const remPx = x => x * innerWidth / 100;
+function marginiVista() {
+  return essenziale() ? {paddingTopLeft: [remPx(3), remPx(5)], paddingBottomRight: [remPx(30), remPx(17)]} : {padding: [0, 0]};
+}
+
 let vistaIniziale = null;
 function fit() {
-  map.fitBounds(BOUNDS, {padding:[0,0], animate:false});
+  map.fitBounds(BOUNDS, Object.assign({animate:false}, marginiVista()));
   vistaIniziale = {zoom: map.getZoom(), centro: map.getCenter()};
   aggiornaTastoIntera();
 }
@@ -378,7 +518,7 @@ function aggiornaOrdine() {
 }
 function scorri(passo) {
   const vis = new Set(visibili.map(o => o.v.mmsi));
-  const lista = ordine.filter(k => vis.has(k));          // solo quelle sullo schermo
+  const lista = (essenziale() ? ordineEss : ordine).filter(k => vis.has(k));   // solo quelle sullo schermo, nell'ordine del tema
   if (!lista.length) return;
   const i = lista.indexOf(sel);
   sel = i < 0 ? (passo > 0 ? lista[0] : lista[lista.length - 1]) : lista[(i + passo + lista.length) % lista.length];
@@ -408,6 +548,7 @@ function scegli(dir) {
 }
 function zoomSu(v) { map.flyTo([v.lat, v.lon], Math.max(17, map.getZoom()), {duration: 1}); }
 function tasto(t) {
+  if (menuAperto) { gestisciMenu(t); return; }      // menu aperto: i tasti servono al menu
   mostraAiuto(8);
   const fotoAperta = zoom.classList.contains('aperto');
   if (t === 'su' || t === 'giu') { if (!fotoAperta) scorri(t === 'giu' ? 1 : -1); return; }
@@ -425,7 +566,7 @@ function tasto(t) {
     if (fotoAperta) chiudiFoto();
     const v = barcaSel();
     if (v && inVistaIniziale()) zoomSu(v);
-    else map.flyToBounds(BOUNDS, {padding: [0, 0], duration: 1});
+    else map.flyToBounds(BOUNDS, Object.assign({duration: 1}, marginiVista()));
     return;
   }
   if (t === 'piu' || t === 'meno') {
@@ -434,13 +575,14 @@ function tasto(t) {
     if (v) map.setZoomAround([v.lat, v.lon], z); else map.setZoom(z);
     return;
   }
-  if (t === 'pannello') { pannelloVisibile = !pannelloVisibile; render(); return; }
+  if (t === 'pannello') { if (fotoAperta) chiudiFoto(); menuAperto = true; disegnaMenu(); return; }   // tasto Menu: opzioni
 }
 // Indietro: true se gestito qui, false = l'app si chiude
 function indietro() {
+  if (menuAperto) { menuAperto = false; disegnaMenu(); return true; }
   mostraAiuto(8);
   if (zoom.classList.contains('aperto')) { chiudiFoto(); return true; }
-  if (!inVistaIniziale()) { map.flyToBounds(BOUNDS, {padding: [0, 0], duration: 1}); return true; }
+  if (!inVistaIniziale()) { map.flyToBounds(BOUNDS, Object.assign({duration: 1}, marginiVista())); return true; }
   if (sel) { sel = null; render(); return true; }
   return false;
 }
@@ -487,8 +629,9 @@ async function refresh() {
     st.className = d.error ? 'err' : '';
     st.textContent = d.error ? ('Errore: ' + d.error)
                              : (vessels.length + ' barche (' + vessels.filter(v => v.age > SBIADISCI).length + ' non aggiornate da oltre ' + quando(SBIADISCI) + ') - aggiornato ' + (d.updated || '...'));
+    ultimoStato = {testo: st.textContent, err: !!d.error};
     render();
-  } catch (e) { st.className = 'err'; st.textContent = 'Server non raggiungibile'; }
+  } catch (e) { st.className = 'err'; st.textContent = 'Server non raggiungibile'; ultimoStato = {testo: st.textContent, err: true}; if (essenziale()) render(); }
 }
 setInterval(refresh, 10 * 1000);
 refresh();
@@ -503,6 +646,7 @@ function aggiornaScala() {
 aggiornaScala();
 
 function render() {
+  if (essenziale()) { renderEss(); return; }
   aggiornaScala();
   dots.clearLayers(); labels.innerHTML = ''; svg.innerHTML = '';
   const W = innerWidth, H = innerHeight;
@@ -1029,8 +1173,8 @@ function frecceArrivi() {
   const fr = document.getElementById('frecce');
   fr.innerHTML = '';
   const W = innerWidth, H = innerHeight, M = 12, R = 11;            // margine dal bordo, "raggio" della freccia
-  const pannelli = ['scala', 'arrivi'].map(id => document.getElementById(id))
-    .filter(e => e && getComputedStyle(e).display !== 'none').map(e => e.getBoundingClientRect());
+  const pannelli = ['scala', 'arrivi', 'ess-colonna', 'ess-scheda'].map(id => document.getElementById(id))
+    .filter(e => e && e.getClientRects().length).map(e => e.getBoundingClientRect());
   for (const a of arrivi) {
     const p = map.latLngToContainerPoint([a.ing_lat, a.ing_lon]);
     let x = Math.min(Math.max(p.x, M), W - M), y = Math.min(Math.max(p.y, M), H - M);
@@ -1127,4 +1271,204 @@ function disegnaLinee(placed, dotRects) {
 }
 
 
+// ===================================================================================================
+// MENU OPZIONI (tasto Menu del telecomando, M sulla tastiera in prova) e TEMA ESSENZIALE
+// ===================================================================================================
+// rotta e velocita' stimate dalle ultime posizioni (l'AIS di VesselFinder non le manda)
+function rottaStimata(v) {
+  if (!inMovimento(v)) return null;
+  const st = storiaPos[v.mmsi], ora = Date.now();
+  const q = st.find(p => ora - p.t <= 10 * 60000 && distM(p, v) > MOVIMENTO_M);
+  if (!q) return null;
+  const dy = (v.lat - q.lat) * 111320, dx = (v.lon - q.lon) * 111320 * Math.cos(v.lat * Math.PI / 180);
+  const sec = Math.max(30, (ora - q.t) / 1000);
+  return {rotta: (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360, nodi: Math.hypot(dx, dy) / sec * 1.94384};
+}
+const PUNTI = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+function tipoIt(v) {
+  const t = String(v.type || '').toLowerCase();
+  if (/sail/.test(t)) return 'Barca a vela';
+  if (/fish/.test(t)) return 'Peschereccio';
+  if (/tug|tow/.test(t)) return 'Rimorchiatore';
+  if (/passenger|ferry/.test(t)) return 'Traghetto';
+  if (/cargo|container|bulk/.test(t)) return 'Mercantile';
+  if (/tanker/.test(t)) return 'Cisterna';
+  if (/law|military/.test(t)) return 'Forze dell\'ordine';
+  if (/search|rescue/.test(t)) return 'Soccorso';
+  if (/pilot/.test(t)) return 'Pilota';
+  if (/high speed/.test(t)) return 'Unità veloce';
+  return 'Imbarcazione da diporto';
+}
+const numIt = x => String(Math.round(x * 10) / 10).replace('.', ',');
+function sagomaSvg(v, w, piena) {
+  const s = SAGOME[sagomaPerTipo(v.type, v.len)], h = (s.bottom - s.top) * w / 100;
+  return {h, svg: '<svg width="' + w + '" height="' + h + '" viewBox="0 ' + s.top + ' 100 ' + (s.bottom - s.top) + '"><g fill="currentColor"' +
+                  (piena ? '' : ' opacity=".3"') + '>' + s.d.map(d => '<path d="' + d + '"/>').join('') + '</g></svg>'};
+}
+// "foto" quando manca: la sagoma della barca sull'orizzonte
+function fotoSagoma(v) {
+  const s = SAGOME[sagomaPerTipo(v.type, v.len)], w = 34 + (v.len || 12) * 1.6, h = (s.bottom - s.top) * w / 100, x = (300 - w) / 2, y = 128;
+  const corpo = '<g transform="translate(' + x + ',' + (y - h * (-s.top) / (s.bottom - s.top)) + ') scale(' + w / 100 + ')"><g transform="translate(0,' + (-s.top) + ')">' +
+                s.d.map(d => '<path d="' + d + '"/>').join('') + '</g></g>';
+  const svgF = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200"><defs>' +
+    '<linearGradient id="c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ea2ad"/><stop offset=".62" stop-color="#d9d6cf"/><stop offset=".64" stop-color="#e6e1d8"/></linearGradient>' +
+    '<linearGradient id="m" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#53707e"/><stop offset="1" stop-color="#1e3039"/></linearGradient></defs>' +
+    '<rect width="300" height="129" fill="url(#c)"/><rect y="128" width="300" height="72" fill="url(#m)"/>' +
+    '<g fill="#1b262c">' + corpo + '</g><g fill="#1b262c" opacity=".18" transform="translate(0,' + (2 * y) + ') scale(1,-1)">' + corpo + '</g></svg>';
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgF);
+}
+
+// colonna in scala: una barca per riga, tutte allineate a sinistra e alla stessa scala (0,8 rem per metro se c'e' posto)
+function colonnaScala(lista, larg, altMax) {
+  const conL = lista.filter(v => v.len > 0), senza = lista.filter(v => !(v.len > 0));
+  let html = '';
+  if (conL.length) {
+    const RIGA = remPx(2.5), maxL = Math.max(...conL.map(v => v.len));
+    const alt = (v, p) => sagomaSvg(v, v.len * p).h + RIGA;
+    const tot = p => conL.reduce((t, v) => t + alt(v, p), 0);
+    let ppm = Math.min(larg * 0.75 / maxL, remPx(.8));
+    for (let k = 0; k < 4 && tot(ppm) > altMax; k++) ppm = Math.max(remPx(.8) * 0.4, ppm * altMax / tot(ppm));
+    const dentro = []; let h = 0;
+    for (const v of conL) { const a = alt(v, ppm); if (h + a > altMax + 2) break; dentro.push(v); h += a; }
+    const scelta = conL.find(v => v.mmsi === sel);
+    if (scelta && !dentro.includes(scelta)) {                 // la barca selezionata si vede sempre
+      while (dentro.length && h + alt(scelta, ppm) > altMax) h -= alt(dentro.pop(), ppm);
+      dentro.push(scelta); dentro.sort((a, b) => conL.indexOf(a) - conL.indexOf(b));
+    }
+    for (const v of dentro)
+      html += '<div class="riga-s' + (v.mmsi === sel ? ' sel' : '') + (v.age > SBIADISCI ? ' vecchia' : '') + '"><div class="top"><i style="background:' + v.color + '"></i><em>' +
+              esc(v.name) + '</em><span>' + fmtM(v.len) + ' m</span></div>' + sagomaSvg(v, v.len * ppm, v.mmsi === sel).svg + '</div>';
+    const passo = [2, 5, 10, 20, 50].find(p => p * ppm >= remPx(3)) || 50, n = Math.max(1, Math.min(Math.floor(larg / (passo * ppm)), Math.ceil(maxL / passo)));
+    html += '<svg width="' + larg + '" height="' + remPx(1.8) + '" style="overflow:visible;margin-top:.4rem" stroke="var(--ink3)" fill="var(--ink2)"><line x1="0" x2="' + n * passo * ppm + '" y1="1" y2="1"/>';
+    for (let k = 0; k <= n; k++) html += '<line x1="' + k * passo * ppm + '" x2="' + k * passo * ppm + '" y1="1" y2="' + remPx(.4) + '"/><text stroke="none" x="' + k * passo * ppm +
+         '" y="' + remPx(1.35) + '" font-size="' + remPx(.75) + '" text-anchor="' + (k ? (k === n ? 'end' : 'middle') : 'start') + '">' + k * passo + (k === n ? ' m' : '') + '</text>';
+    html += '</svg>';
+    const fuori = conL.filter(v => !dentro.includes(v));
+    if (fuori.length) html += '<div class="altre">Altre ' + fuori.length + ': ' + fuori.map(v => esc(v.name)).join(', ') + '</div>';
+  }
+  if (senza.length) html += '<div class="altre">Senza misure: ' + senza.map(v => (v.mmsi === sel ? '<b style="color:var(--ink)">' + esc(v.name) + '</b>' : esc(v.name))).join(', ') + '</div>';
+  return html;
+}
+
+// sezioni della colonna, nello stesso ordine dei tasti Su/Giu: prima i gruppi (porti, zone), poi le barche libere
+let ordineEss = [], selPrima = null, ultimoStato = {testo: '', err: false};
+function sezioniEss() {
+  const vis = new Set(visibili.map(o => o.v.mmsi));
+  const perLung = (a, b) => ((b.len > 0) - (a.len > 0)) || (b.len || 0) - (a.len || 0) || String(a.name).localeCompare(String(b.name));
+  const sez = gruppiAttuali.map(g => ({nome: g.z.nome, gruppo: g, barche: g.membri.filter(v => vis.has(v.mmsi)).sort(perLung)})).filter(s => s.barche.length);
+  const nelGruppo = new Set(gruppiAttuali.flatMap(g => g.membri.map(v => v.mmsi)));
+  const libere = visibili.map(o => o.v).filter(v => !nelGruppo.has(v.mmsi)).sort(perLung);
+  if (libere.length) sez.push({nome: sez.length ? 'In mare' : 'In vista', barche: libere});
+  return sez;
+}
+
+function renderEss() {
+  aggiornaScala();
+  dots.clearLayers(); labels.innerHTML = ''; svg.innerHTML = '';
+  const W = innerWidth, H = innerHeight;
+  gruppiAttuali = calcolaGruppi();
+  visibili = [];
+  for (const v of vessels) {
+    const p = map.latLngToContainerPoint([v.lat, v.lon]);
+    if (p.x < 0 || p.y < 0 || p.x > W || p.y > H) continue;
+    visibili.push({v, p});
+  }
+  if (sel && !visibili.some(o => o.v.mmsi === sel)) sel = null;
+  const sez = sezioniEss();
+  ordineEss = sez.flatMap(s => s.barche.map(v => v.mmsi));
+  const v = barcaSel();
+  const gSel = v ? gruppoDi(v.mmsi) : null;
+
+  // ---------- segni sulla mappa
+  let m = '';
+  const nelGruppo = new Set(gruppiAttuali.flatMap(g => g.membri.map(x => x.mmsi)));
+  const centri = gruppiAttuali.map(g => {
+    const pts = g.membri.map(x => map.latLngToContainerPoint([x.lat, x.lon]));
+    return {g, x: pts.reduce((t, q) => t + q.x, 0) / pts.length, y: pts.reduce((t, q) => t + q.y, 0) / pts.length};
+  });
+  for (const o of visibili) {
+    if (nelGruppo.has(o.v.mmsi)) continue;
+    const x = o.v, r = rottaStimata(x), scelta = x.mmsi === sel;
+    m += '<div class="s" style="left:' + o.p.x + 'px;top:' + o.p.y + 'px">' +
+         (r ? '<div class="rotta" style="--c:' + x.color + ';transform:rotate(' + (r.rotta - 90) + 'deg)"></div>' : '') +
+         '<div class="p' + (scelta ? ' sel' : '') + (x.age > SBIADISCI ? ' vecchia' : '') + '" style="--c:' + x.color + '"></div>' +
+         (scelta ? '<div class="np" style="left:1.1rem;top:-.8rem">' + esc(x.name) + '</div>' : '') + '</div>';
+  }
+  // gruppi: un'etichetta col nome del porto e i colori delle sue barche, spostata dalla parte opposta al gruppo vicino
+  for (const c of centri) {
+    if (c.x < 0 || c.y < 0 || c.x > W || c.y > H) continue;
+    let vx = 0, vy = 1, dmin = Infinity;
+    for (const d of centri) if (d !== c) {
+      const dd = Math.hypot(c.x - d.x, c.y - d.y);
+      if (dd < dmin && dd < remPx(14)) { dmin = dd; vx = (c.x - d.x) / (dd || 1); vy = (c.y - d.y) / (dd || 1); }
+    }
+    const dx = vx * remPx(1.2), dy = vy * remPx(1.2);
+    const qui = c.g.membri.find(x => x.mmsi === sel);
+    m += '<div class="s" style="left:' + c.x + 'px;top:' + c.y + 'px"><div class="centro"></div>' +
+         '<div class="pill' + (qui ? ' qui' : '') + '" style="left:' + dx + 'px;top:' + dy + 'px">' + esc(c.g.z.nome) + '<span class="pp">' +
+         c.g.membri.map(x => '<i class="' + (x.mmsi === sel ? 'sel' : '') + '" style="background:' + x.color + '"></i>').join('') + '</span></div>' +
+         (qui ? '<div class="np" style="left:' + dx + 'px;top:' + (dy + (vy >= 0 ? remPx(1.4) : -remPx(2.9))) + 'px;transform:translateX(-50%)">' + esc(qui.name) + '</div>' : '') + '</div>';
+  }
+  document.getElementById('ess-mappa').innerHTML = m;
+  // etichette dei gruppi che si toccano: si scostano in verticale (con il nome della barca scelta)
+  const gruppiS = [...document.querySelectorAll('#ess-mappa .s')].filter(e => e.querySelector('.pill'));
+  for (let giro = 0; giro < 4; giro++) {
+    let mosso = false;
+    for (let i = 0; i < gruppiS.length; i++) for (let j = i + 1; j < gruppiS.length; j++) {
+      const a = gruppiS[i].querySelector('.pill').getBoundingClientRect(), b = gruppiS[j].querySelector('.pill').getBoundingClientRect();
+      const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left) + 8, oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) + 6;
+      if (ox <= 0 || oy <= 0) continue;
+      const giu = b.top >= a.top ? gruppiS[j] : gruppiS[i], su = giu === gruppiS[j] ? gruppiS[i] : gruppiS[j];
+      for (const [el, d] of [[giu, oy / 2], [su, -oy / 2]])
+        el.querySelectorAll('.pill, .np').forEach(x => { x.style.top = (parseFloat(x.style.top) + d) + 'px'; });
+      mosso = true;
+    }
+    if (!mosso) break;
+  }
+
+  // ---------- testata
+  const ora = new Date(), hh = String(ora.getHours()).padStart(2, '0') + ':' + String(ora.getMinutes()).padStart(2, '0');
+  const inMov = vessels.filter(inMovimento).length;
+  const testata = '<div class="testata"><h1>Gallipoli</h1><p' + (ultimoStato.err ? ' class="err"' : '') + '>' + hh + '&nbsp;&nbsp;' +
+    (ultimoStato.err ? esc(ultimoStato.testo) : vessels.length + ' barche' + (inMov ? ', ' + inMov + ' in movimento' : '')) + '</p></div>';
+
+  // ---------- colonna
+  const sezAperta = sez.find(s => s.barche.some(x => x.mmsi === sel)) || sez[0];
+  const nArr = arrivi.length;
+  const altMax = H - remPx(7) - remPx(2.6) * (sez.length - 1) - (nArr ? remPx(2.2) + remPx(1.8) * nArr : 0) - remPx(2.6) - remPx(2.6);
+  let col = '';
+  for (const s of sez) {
+    if (s === sezAperta) col += '<div class="gruppo-aperto"><div class="t">' + esc(s.nome) + '<span>' + s.barche.length + (s.barche.length === 1 ? ' barca' : ' barche') + '</span></div>' +
+                               colonnaScala(s.barche, remPx(24), altMax) + '</div>';
+    else col += '<div class="gruppo-chiuso">' + esc(s.nome) + '<span class="pallini">' + s.barche.map(x => '<i style="background:' + x.color + '"></i>').join('') +
+                '</span><b>' + s.barche.length + '</b></div>';
+  }
+  if (nArr) col += '<div class="arrivi"><h3>In arrivo</h3>' + arrivi.map(a => '<div><i style="background:' + a.color + '"></i>' + esc(a.name) + '<span>' + tempo(a.eta) + '</span></div>').join('') + '</div>';
+
+  // ---------- scheda della barca selezionata
+  let scheda;
+  if (v) {
+    const r = rottaStimata(v);
+    const dove = gSel ? (/^Zona/.test(gSel.z.nome) ? 'ferma in ' : 'nel ') + gSel.z.nome : r ? 'in navigazione verso ' + PUNTI[Math.round(r.rotta / 45) % 8] : 'ferma';
+    const foto = v.photo ? urlFoto(v.photo) : fotoSagoma(v);
+    const ok = gSel ? '<div class="entra-in"><kbd>OK</kbd>apri ' + esc(gSel.z.nome) + '</div>' : v.photo ? '<div class="entra-in"><kbd>OK</kbd>foto grande</div>' : '';
+    scheda = '<div class="scheda cambia' + (sel !== selPrima ? ' prima' : '') + '" id="ess-scheda"><div class="foto"><img alt="" src="' + foto + '"></div>' +
+      '<div><h2 class="nome">' + esc(v.name) + '</h2><p class="sotto">' + tipoIt(v) + ', ' + dove + '</p><div class="dati">' +
+      '<div><b>' + (v.len ? fmtM(v.len) + '<small>m</small>' : '–') + '</b>lunghezza</div>' +
+      '<div><b>' + (v.wid ? fmtM(v.wid) + '<small>m</small>' : '–') + '</b>larghezza</div>' +
+      '<div><b>' + (r ? numIt(r.nodi) + '<small>nodi</small>' : '0<small>nodi</small>') + '</b>velocità' + (r ? ' stimata' : '') + '</div>' +
+      '<div><b>' + (v.age < 1 ? 'adesso' : quando(v.age)) + '</b>' + (v.age < 1 ? 'rilevata' : 'fa, ultima rilevazione') + '</div>' +
+      '</div>' + ok + '</div></div>';
+  } else {
+    scheda = '<div class="scheda" id="ess-scheda"><div></div><div class="vuota">Usa &#x25B2;&#x25BC; per scegliere una barca</div></div>';
+  }
+  const aiuto = '<div class="aiuto"><span>&#x25B2;&#x25BC; barca</span><span>&#x25C0;&#x25B6; vicina</span><span>OK apri</span><span>&#x25B6;&#x275A;&#x275A; zoom</span><span>&#x2630; menu</span><span>&#x21A9; indietro</span></div>';
+  document.getElementById('ess-ui').innerHTML = testata + '<div class="colonna" id="ess-colonna">' + col + '</div>' + scheda + aiuto;
+  if (sel !== selPrima) {
+    selPrima = sel;
+    requestAnimationFrame(() => requestAnimationFrame(() => { const e = document.getElementById('ess-scheda'); if (e) e.classList.remove('prima'); }));
+  }
+  frecceArrivi();
+}
+setInterval(() => { if (essenziale()) render(); }, 30 * 1000);       // l'ora in alto
 </script></body></html>
